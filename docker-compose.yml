@@ -1,0 +1,30 @@
+# Services (Which run in container)
+services:
+  # NestJS Backend Service
+  backend:
+    build:                            # How to build image 
+      context: ./backend              # Dockerfile is located in this folder
+      dockerfile: Dockerfile          # Dockerfile name 
+      target: development             # IMPORTANT: Use 'development' stage (not 'builder' or 'production')
+    container_name: nexacall-backend  # Container name 
+    restart: unless-stopped           # Auto restart policy 
+    ports:                            # Port mapping (host:container)
+      - "3000:3000"                   # Host 3000 → Container 3000
+    environment:                      # Environment variables
+      - NODE_ENV=development
+      - PORT=3000
+    volumes:                  
+      # ============================================
+      # Volume mounting for hot-reload (development)
+      # ============================================
+      # Mount entire backend folder (so all code changes reflect)
+      - ./backend:/app
+      # IMPORTANT: Keep container's node_modules (don't overwrite with local)
+      - /app/node_modules
+    networks:                 
+      - nexacall-network              # Which network to join
+
+# Networks (Outside the services)
+networks:
+  nexacall-network:
+    driver: bridge                    # Bridge driver
