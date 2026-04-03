@@ -40,4 +40,11 @@ docker logs --tail 100 nexacall-backend
 
 # View logs with timestamps
 docker-compose logs -t
+
+# Remove image
+docker rmi nexacall-backend -f
+
+# Remove dist folder
+rmdir /s /q backend\dist
+
 ```
