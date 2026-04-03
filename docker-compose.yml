@@ -1,6 +1,8 @@
 # Services (Which run in container)
 services:
+  # ============================================
   # NestJS Backend Service
+  # ============================================
   backend:
     build:                            # How to build image 
       context: ./backend              # Dockerfile is located in this folder
@@ -23,6 +25,62 @@ services:
       - /app/node_modules
     networks:                 
       - nexacall-network              # Which network to join
+
+  # ============================================
+  # PostgreSQL Database Service
+  # ============================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: nexacall-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=nexacall_user      
+      - POSTGRES_PASSWORD=nexacall_password
+      - POSTGRES_DB=nexacall_db
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/db/init:/docker-entrypoint-initdb.d  # Optional
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nexacall_user -d nexacall_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - nexacall-network
+
+  # ============================================
+  # pgAdmin - Web-based Database Management
+  # ============================================
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: nexacall-pgadmin
+    restart: unless-stopped
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=admin@nexacall.com
+      - PGADMIN_DEFAULT_PASSWORD=admin123
+      - PGADMIN_CONFIG_SERVER_MODE=False
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - nexacall-network
+
+# ============================================
+# Volumes (Persistent data storage)
+# ============================================
+volumes:
+  postgres_data:
+    driver: local
+  pgadmin_data:
+    driver: local
 
 # Networks (Outside the services)
 networks:

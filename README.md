@@ -47,4 +47,6 @@ docker rmi nexacall-backend -f
 # Remove dist folder
 rmdir /s /q backend\dist
 
+# Run only postgres and pgadmin
+docker-compose up -d postgres pgadmin
 ```
