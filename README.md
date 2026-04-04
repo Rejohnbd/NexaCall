@@ -50,3 +50,9 @@ rmdir /s /q backend\dist
 # Run only postgres and pgadmin
 docker-compose up -d postgres pgadmin
 ```
+
+## Backend
+```bash
+# Create user resource (controller, service, module, dto, entity)
+nest g res users
+```

@@ -33,11 +33,11 @@ export class HealthController {
             database: {
                 status: databaseStatus,
                 error: databaseError,
-                config: {
-                    host: process.env.DB_HOST,
-                    port: process.env.DB_PORT,
-                    database: process.env.DB_NAME,
-                },
+                // config: {
+                //     host: process.env.DB_HOST,
+                //     port: process.env.DB_PORT,
+                //     database: process.env.DB_NAME,
+                // },
             },
             timestamp: new Date().toISOString(),
         };
