@@ -21,7 +21,8 @@ export default class UserSeeder implements Seeder {
                 username: 'admin',
                 email: adminEmail,
                 name: 'System Administrator',
-                password: await bcrypt.hash('admin123', 10),
+                // password: await bcrypt.hash('admin123', 10),
+                password: 'admin123',
                 is_active: true,
                 is_admin: true,
             });
@@ -38,7 +39,8 @@ export default class UserSeeder implements Seeder {
                 username: 'testuser',
                 email: testEmail,
                 name: 'Test User',
-                password: await bcrypt.hash('test123', 10),
+                // password: await bcrypt.hash('test123', 10),
+                password: 'test123',
                 is_active: true,
                 is_admin: false,
             });
