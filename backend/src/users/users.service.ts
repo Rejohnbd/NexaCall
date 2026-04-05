@@ -124,6 +124,14 @@ export class UsersService {
   //   throw new SuccessException(null, 'User deleted successfully');
   // }
 
+  async findByEmail(email: string): Promise<User | null> {
+    return this.usersRepository.findOne({
+      where: { email },
+      select: ['id', 'email', 'username', 'password', 'is_active', 'is_admin']
+    });
+  }
+
+
   async uploadAvatar(userId: string, file: Express.Multer.File) {
     try {
       const user = await this.usersRepository.findOne({ where: { id: userId } });
