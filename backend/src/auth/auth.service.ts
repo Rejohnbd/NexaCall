@@ -1,10 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { LoginDto } from './dto/login.dto';
 import { UsersService } from 'src/users/users.service';
-import { UnauthorizedException } from '../common/exceptions/http.exception';
+import { ConflictException, UnauthorizedException } from '../common/exceptions/http.exception';
 import { compare } from 'bcryptjs';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import { RegisterDto } from './dto/register.dto';
+import * as bcrypt from 'bcryptjs';
+
 
 @Injectable()
 export class AuthService {
@@ -14,18 +17,44 @@ export class AuthService {
         private readonly configService: ConfigService,
     ) { }
 
+    async register(registerDto: RegisterDto) {
+        // Check if user exists
+        const existingUser = await this.usersService.findByEmail(registerDto.email);
+        if (existingUser) {
+            throw new ConflictException('User already exists');
+        }
+
+        // Create user
+        // Note: Password hashing is handled by the User entity @BeforeInsert hook
+        const user = await this.usersService.create({
+            email: registerDto.email,
+            username: registerDto.username,
+            password: registerDto.password,
+            name: registerDto.name,
+        });
+
+        // Generate tokens
+        const tokens = await this.generateTokens(user.id, user.email);
+
+        return {
+            status: true,
+            message: 'User registered successfully',
+            data: {
+                user: { id: user.id, email: user.email, username: user.username },
+                ...tokens,
+            },
+        };
+    }
+
     async login(loginDto: LoginDto) {
         if (!loginDto) {
             throw new UnauthorizedException('Invalid credentials');
         }
         const user = await this.usersService.findByEmail(loginDto.email);
-        console.log('Login attempt for email:', loginDto.email);
-        console.log('User found:', user ? 'Yes' : 'No');
 
         if (!user) {
             throw new UnauthorizedException('Invalid credentials');
         }
-
 
         // Check if user has password field
         if (!user.password) {
@@ -33,9 +62,7 @@ export class AuthService {
         }
 
         // Verify password
-        console.log('Verifying password for user:', user.email);
         const isPasswordValid = await compare(loginDto.password, user.password);
-        console.log('Password valid:', isPasswordValid);
 
         if (!isPasswordValid) {
             throw new UnauthorizedException('Invalid credentials');

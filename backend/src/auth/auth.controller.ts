@@ -6,10 +6,18 @@ import { LoginDto } from './dto/login.dto';
 import { Public } from '../common/decorators/public.decorator';
 import { HttpCode } from '@nestjs/common';
 import { HttpStatus } from '@nestjs/common';
+import { RegisterDto } from './dto/register.dto';
 
 @Controller('auth')
 export class AuthController {
     constructor(private readonly authService: AuthService) { }
+
+    @Public()
+    @Post('register')
+    @HttpCode(HttpStatus.OK)
+    async register(@Body() registerDto: RegisterDto) {
+        return this.authService.register(registerDto);
+    }
 
     @Public()
     @Post('login')

@@ -47,33 +47,32 @@ export class UsersService {
     private usersRepository: Repository<User>,
   ) { }
 
-  create(createUserDto: CreateUserDto) {
-    return 'This action adds a new user';
-  }
-
-  // async create(createUserDto: CreateUserDto) {
-  //   const existingUser = await this.usersRepository.findOne({
-  //     where: [
-  //       { email: createUserDto.email },
-  //       { username: createUserDto.username },
-  //     ],
-  //   });
-
-  //   if (existingUser) {
-  //     throw new ConflictException('User already exists');
-  //   }
-
-  //   const user = this.usersRepository.create(createUserDto);
-  //   const savedUser = await this.usersRepository.save(user);
-  //   const { password, ...result } = savedUser;
-
-  //   throw new SuccessException(result, 'User created successfully', 201);
+  // create(createUserDto: CreateUserDto) {
+  //   return 'This action adds a new user';
   // }
+
+  async create(createUserDto: CreateUserDto) {
+    const existingUser = await this.usersRepository.findOne({
+      where: [
+        { email: createUserDto.email },
+        { username: createUserDto.username },
+      ],
+    });
+
+    if (existingUser) {
+      throw new ConflictException('User already exists');
+    }
+
+    const user = this.usersRepository.create(createUserDto);
+    const savedUser = await this.usersRepository.save(user);
+    const { password, ...result } = savedUser;
+
+    return result;
+  }
 
   async findAll() {
     const users = await this.usersRepository.find();
-    const usersWithoutPassword = users.map(({ password, ...user }) => user);
-    throw new SuccessException(usersWithoutPassword, 'Users fetched successfully');
+    return users.map(({ password, ...user }) => user);
   }
 
   findOne(id: number) {
@@ -179,20 +178,17 @@ export class UsersService {
       const updatedUser = await this.usersRepository.save(user);
       const { password, ...result } = updatedUser;
 
-      throw new SuccessException(
-        {
-          user: result,
-          avatar: {
-            filename: fileName,
-            url: `/uploads/avatars/${fileName}`,
-            size: file.size,
-          },
+      return {
+        user: result,
+        avatar: {
+          filename: fileName,
+          url: `/uploads/avatars/${fileName}`,
+          size: file.size,
         },
-        'Avatar uploaded successfully'
-      );
+      };
 
     } catch (error) {
-      if (error instanceof SuccessException || error instanceof NotFoundException) {
+      if (error instanceof NotFoundException) {
         throw error;
       }
       throw new ErrorException('Failed to upload avatar', error.message);
@@ -240,21 +236,15 @@ export class UsersService {
         }
       }
 
-      throw new SuccessException(
-        {
-          uploaded: uploadedFiles,
-          failed: errors,
-          total: files.length,
-          successCount: uploadedFiles.length,
-          failedCount: errors.length,
-        },
-        `${uploadedFiles.length} files uploaded successfully`
-      );
+      return {
+        uploaded: uploadedFiles,
+        failed: errors,
+        total: files.length,
+        successCount: uploadedFiles.length,
+        failedCount: errors.length,
+      };
 
     } catch (error) {
-      if (error instanceof SuccessException) {
-        throw error;
-      }
       throw new ErrorException('Failed to upload files', error.message);
     }
   }
@@ -285,10 +275,10 @@ export class UsersService {
       const updatedUser = await this.usersRepository.save(user);
       const { password, ...result } = updatedUser;
 
-      throw new SuccessException(result, 'Avatar deleted successfully');
+      return result;
 
     } catch (error) {
-      if (error instanceof SuccessException || error instanceof NotFoundException) {
+      if (error instanceof NotFoundException) {
         throw error;
       }
       throw new ErrorException('Failed to delete avatar', error.message);
