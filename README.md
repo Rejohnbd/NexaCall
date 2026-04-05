@@ -292,5 +292,11 @@ npm run seed:run
 
 # Create new seeder file
 npm run seed:create
+
+# Interceptor Create
+nest g interceptor <interceptor-name>
+
+# Interceptor Shortcut
+nest g itc <interceptor-name>
 ```
 
