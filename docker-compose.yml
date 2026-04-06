@@ -41,10 +41,12 @@ services:
     environment:
       - NODE_ENV=development
       - PORT=3000
+      - CHOKIDAR_USEPOLLING=true
+      - WATCHPACK_POLLING=true
+      - WATCHPACK_POLLING_INTERVAL=1000
     volumes:
       - ./frontend:/app
       - /app/node_modules
-      - /app/.next
     networks:
       - nexacall-network
 
@@ -102,6 +104,8 @@ volumes:
   postgres_data:
     driver: local
   pgadmin_data:
+    driver: local
+  node_modules:
     driver: local
 
 # Networks (Outside the services)
