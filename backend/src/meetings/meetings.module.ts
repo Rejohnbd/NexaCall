@@ -3,10 +3,11 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { MeetingsService } from './meetings.service';
 import { MeetingsController } from './meetings.controller';
 import { Meeting } from './entities/meeting.entity';
+import { MeetingGateway } from './meeting.gateway';
 
 @Module({
   imports: [TypeOrmModule.forFeature([Meeting])],
   controllers: [MeetingsController],
-  providers: [MeetingsService],
+  providers: [MeetingsService, MeetingGateway],
 })
-export class MeetingsModule {}
+export class MeetingsModule { }
