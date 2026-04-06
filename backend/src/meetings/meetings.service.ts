@@ -3,6 +3,7 @@ import { CreateMeetingDto } from './dto/create-meeting.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Meeting } from './entities/meeting.entity';
 import { Repository } from 'typeorm';
+import { NotFoundException } from 'src/common/exceptions/http.exception';
 
 @Injectable()
 export class MeetingsService {
@@ -43,6 +44,18 @@ export class MeetingsService {
             joinUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}${meetingUrl}`,
             createdAt: savedMeeting.createdAt,
         };
+    }
+
+    async findByRoomId(roomId: string) {
+        const meeting = await this.meetingRepository.findOne({
+            where: { roomId },
+        });
+
+        if (!meeting) {
+            throw new NotFoundException('Meeting not found');
+        }
+
+        return meeting;
     }
 
     private generateRoomId(): string {
