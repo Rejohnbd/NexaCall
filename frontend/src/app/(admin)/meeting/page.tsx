@@ -10,7 +10,6 @@ export default function MeetingPage() {
     const router = useRouter();
 
     const handleMeetingCreated = (meetingId: string, roomId: string) => {
-        // Redirect to the meeting room
         router.push(`/meeting/${roomId}`);
     };
 
@@ -33,7 +32,6 @@ export default function MeetingPage() {
                 </div>
             </div>
 
-            {/* Create Meeting Dialog */}
             <CreateMeetingDialog
                 isOpen={isDialogOpen}
                 onClose={() => setIsDialogOpen(false)}

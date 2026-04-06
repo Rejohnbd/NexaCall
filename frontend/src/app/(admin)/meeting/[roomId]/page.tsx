@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useMeeting } from '@/hooks/use-meeting';
 import { useSocket } from '@/hooks/use-socket';
+import { useWebRTC } from '@/hooks/use-webrtc';
 import { VideoGrid } from '@/components/meeting/video-grid';
 import { MeetingControls } from '@/components/meeting/meeting-controls';
 import { Calendar, Clock, Copy, Check, Users } from 'lucide-react';
@@ -24,13 +25,20 @@ export default function MeetingRoomPage() {
     const [hasMounted, setHasMounted] = useState(false);
     const [isMediaReady, setIsMediaReady] = useState(false);
 
-    // Socket connection
-    const { participants: remoteParticipants } = useSocket(roomId, userName || 'Guest');
+    // ✅ Socket connection - Delayed until media is ready
+    const { socket, participants: remoteParticipants, isConnected } = useSocket(roomId, userName, isMediaReady);
+
+    // ✅ WebRTC - এখন socket পাস করা যাচ্ছে
+    const {
+        remoteStreams,
+        createOffer,
+        updateParticipantName,
+        removeRemoteStream
+    } = useWebRTC(socket, roomId, localStream, userName);
 
     useEffect(() => {
         setHasMounted(true);
 
-        // Get user name from localStorage or prompt
         const savedName = localStorage.getItem('meeting_user_name');
         if (savedName) {
             setUserName(savedName);
@@ -43,13 +51,12 @@ export default function MeetingRoomPage() {
         }
     }, []);
 
-    // Initialize media devices (with better error handling)
+    // Initialize media devices
     useEffect(() => {
         if (!hasJoined) return;
 
         const initMedia = async () => {
             try {
-                // Try to get both video and audio
                 const stream = await navigator.mediaDevices.getUserMedia({
                     video: true,
                     audio: true,
@@ -60,14 +67,10 @@ export default function MeetingRoomPage() {
                 console.warn('Could not get camera/mic:', err.name);
 
                 if (err.name === 'AbortError' || err.name === 'NotReadableError') {
-                    // Camera is busy, create a mock stream
-                    console.log('Creating mock video stream...');
                     const mockStream = createMockVideoStream(userName);
                     setLocalStream(mockStream);
                     setIsMediaReady(true);
                 } else if (err.name === 'NotAllowedError') {
-                    // Permission denied
-                    console.log('Permission denied, using audio only if possible');
                     try {
                         const audioOnly = await navigator.mediaDevices.getUserMedia({
                             video: false,
@@ -77,12 +80,10 @@ export default function MeetingRoomPage() {
                         setIsVideoEnabled(false);
                         setIsMediaReady(true);
                     } catch {
-                        // No audio either, mock stream only
                         setLocalStream(createMockVideoStream(userName));
                         setIsMediaReady(true);
                     }
                 } else {
-                    // Fallback: mock stream
                     setLocalStream(createMockVideoStream(userName));
                     setIsMediaReady(true);
                 }
@@ -98,6 +99,41 @@ export default function MeetingRoomPage() {
         };
     }, [hasJoined, userName]);
 
+    // ✅ When new participant joins, create offer
+    useEffect(() => {
+        if (!socket || !localStream) return;
+
+        const handleUserJoined = (user: { userId: string; name: string }) => {
+            console.log('New user joined, creating offer:', user);
+            updateParticipantName(user.userId, user.name);
+            setTimeout(() => {
+                createOffer(user.userId, user.name);
+            }, 500);
+        };
+
+        socket.on('user-joined', handleUserJoined);
+
+        return () => {
+            socket.off('user-joined', handleUserJoined);
+        };
+    }, [socket, localStream, createOffer, updateParticipantName]);
+
+    // ✅ When participant leaves, remove their stream
+    useEffect(() => {
+        if (!socket) return;
+
+        const handleUserLeft = (data: { userId: string }) => {
+            console.log('User left, removing stream:', data.userId);
+            removeRemoteStream(data.userId);
+        };
+
+        socket.on('user-left', handleUserLeft);
+
+        return () => {
+            socket.off('user-left', handleUserLeft);
+        };
+    }, [socket, removeRemoteStream]);
+
     const createMockVideoStream = (name: string): MediaStream => {
         const canvas = document.createElement('canvas');
         canvas.width = 640;
@@ -110,15 +146,11 @@ export default function MeetingRoomPage() {
             ctx.fillStyle = `hsl(${hue}, 70%, 50%)`;
             ctx.fillRect(0, 0, canvas.width, canvas.height);
             ctx.fillStyle = 'white';
-            ctx.font = 'bold 32px Arial';
+            ctx.font = 'bold 24px Arial';
             ctx.textAlign = 'center';
             ctx.fillText(name, canvas.width / 2, canvas.height / 2);
-            ctx.font = '16px Arial';
-            ctx.fillStyle = '#ddd';
-            ctx.fillText('(Mock Video)', canvas.width / 2, canvas.height / 2 + 50);
             requestAnimationFrame(draw);
         };
-
         draw();
         return canvas.captureStream(30);
     };
@@ -156,6 +188,37 @@ export default function MeetingRoomPage() {
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
     };
+
+    // Deduplicate remote participants
+    const uniqueRemoteParticipants = useMemo(() => {
+        const unique = new Map();
+        for (const p of remoteParticipants) {
+            if (!unique.has(p.userId)) {
+                unique.set(p.userId, p);
+            }
+        }
+        return Array.from(unique.values());
+    }, [remoteParticipants]);
+
+    // ✅ Sync participant names with WebRTC
+    useEffect(() => {
+        if (remoteParticipants.length > 0) {
+            remoteParticipants.forEach(p => {
+                updateParticipantName(p.userId, p.name);
+            });
+        }
+    }, [remoteParticipants, updateParticipantName]);
+
+    // Convert remote streams to VideoGrid format
+    const remoteVideoStreams = useMemo(() => {
+        return remoteStreams.map(rs => ({
+            id: rs.userId,
+            name: rs.name,
+            stream: rs.stream,
+            isVideoEnabled: true,
+            isAudioEnabled: true,
+        }));
+    }, [remoteStreams]);
 
     if (!hasMounted || !hasJoined) {
         return (
@@ -197,17 +260,7 @@ export default function MeetingRoomPage() {
         );
     }
 
-    // Combine local participant with remote participants
-    const allParticipants = [
-        { id: 'local', name: userName, isAudioEnabled: isAudioEnabled, isVideoEnabled: isVideoEnabled, isHost: meeting.hostName === userName },
-        ...remoteParticipants.map(p => ({
-            id: p.userId,
-            name: p.name,
-            isAudioEnabled: true,
-            isVideoEnabled: true,
-            isHost: false,
-        })),
-    ];
+    const totalParticipants = 1 + uniqueRemoteParticipants.length;
 
     return (
         <div className="h-screen bg-gray-950 flex flex-col">
@@ -227,6 +280,10 @@ export default function MeetingRoomPage() {
                             <Clock className="w-3 h-3" />
                             <span>Room ID: {meeting.roomId}</span>
                         </div>
+                        <div className="flex items-center gap-1">
+                            <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} />
+                            <span>{isConnected ? 'Connected' : 'Disconnected'}</span>
+                        </div>
                     </div>
                 </div>
 
@@ -237,9 +294,9 @@ export default function MeetingRoomPage() {
                     >
                         <Users className="w-4 h-4" />
                         Participants
-                        {remoteParticipants.length > 0 && (
+                        {uniqueRemoteParticipants.length > 0 && (
                             <span className="ml-1 px-1.5 py-0.5 bg-blue-600 rounded-full text-xs">
-                                {remoteParticipants.length}
+                                {uniqueRemoteParticipants.length}
                             </span>
                         )}
                     </button>
@@ -256,17 +313,10 @@ export default function MeetingRoomPage() {
 
             {/* Main Content */}
             <div className="flex-1 flex p-4 gap-4 min-h-0">
-                {/* Video Grid */}
                 <div className="flex-1">
                     {isMediaReady ? (
                         <VideoGrid
-                            streams={remoteParticipants.map(p => ({
-                                id: p.userId,
-                                name: p.name,
-                                stream: null,
-                                isVideoEnabled: true,
-                                isAudioEnabled: true,
-                            }))}
+                            streams={remoteVideoStreams}
                             localStream={localStream}
                             localName={userName}
                         />
@@ -286,19 +336,35 @@ export default function MeetingRoomPage() {
                         <div className="flex items-center gap-2 mb-4 pb-2 border-b border-gray-700">
                             <Users className="w-4 h-4 text-gray-400" />
                             <h3 className="font-medium text-white">
-                                Participants ({allParticipants.length})
+                                Participants ({totalParticipants})
                             </h3>
                         </div>
                         <div className="flex-1 overflow-y-auto space-y-2">
-                            {allParticipants.map((p) => (
-                                <div key={p.id} className="flex items-center gap-2 p-2 bg-gray-800 rounded-lg">
-                                    <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-sm font-medium">
+                            {/* Local user */}
+                            <div className="flex items-center gap-2 p-2 bg-gray-800 rounded-lg">
+                                <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-sm font-medium">
+                                    {userName.charAt(0).toUpperCase()}
+                                </div>
+                                <div className="flex-1">
+                                    <p className="text-sm text-white">
+                                        {userName} (You)
+                                        {meeting.hostName === userName && (
+                                            <span className="ml-2 text-xs bg-yellow-600 px-1.5 py-0.5 rounded">Host</span>
+                                        )}
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* Remote participants */}
+                            {uniqueRemoteParticipants.map((p) => (
+                                <div key={p.userId} className="flex items-center gap-2 p-2 bg-gray-800 rounded-lg">
+                                    <div className="w-8 h-8 rounded-full bg-purple-600 flex items-center justify-center text-white text-sm font-medium">
                                         {p.name.charAt(0).toUpperCase()}
                                     </div>
                                     <div className="flex-1">
                                         <p className="text-sm text-white">
                                             {p.name}
-                                            {p.isHost && (
+                                            {meeting.hostName === p.name && (
                                                 <span className="ml-2 text-xs bg-yellow-600 px-1.5 py-0.5 rounded">Host</span>
                                             )}
                                         </p>
@@ -320,7 +386,7 @@ export default function MeetingRoomPage() {
                     onEndCall={handleEndCall}
                     onShareScreen={() => console.log('Share screen clicked')}
                     onToggleParticipants={() => setShowParticipants(!showParticipants)}
-                    participantCount={allParticipants.length}
+                    participantCount={totalParticipants}
                 />
             </div>
         </div>
