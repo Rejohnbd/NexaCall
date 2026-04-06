@@ -6,9 +6,7 @@ interface CreateMeetingRequest {
     hostEmail?: string;
 }
 
-
-
-interface MeetingResponse {
+export interface MeetingResponse {
     id: string;
     roomId: string;
     title: string;
@@ -19,6 +17,7 @@ interface MeetingResponse {
     joinUrl: string;
     createdAt: string;
 }
+
 
 export const meetingApi = {
     createMeeting: async (data: CreateMeetingRequest): Promise<MeetingResponse> => {
@@ -36,6 +35,23 @@ export const meetingApi = {
         if (!response.ok) {
             const error = await response.json();
             throw new Error(error.message || 'Failed to create meeting');
+        }
+
+        const result = await response.json();
+        return result.data;
+    },
+
+    getMeetingByRoomId: async (roomId: string): Promise<MeetingResponse> => {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/meetings/room/${roomId}`, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.message || 'Failed to fetch meeting');
         }
 
         const result = await response.json();
