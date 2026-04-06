@@ -18,11 +18,15 @@ export const useCreateMeeting = () => {
         setError(null);
 
         try {
+
             const response = await meetingApi.createMeeting({
                 type: params.type,
                 scheduledTime: params.scheduledTime?.toISOString(),
                 title: params.title,
+                hostName: "John Doe",
+                hostEmail: "john@example.com"
             });
+            console.log(response)
 
             // Redirect to meeting room
             router.push(`/meeting/${response.roomId}`);
