@@ -11,10 +11,10 @@ services:
     container_name: nexacall-backend  # Container name 
     restart: unless-stopped           # Auto restart policy 
     ports:                            # Port mapping (host:container)
-      - "3000:3000"                   # Host 3000 → Container 3000
+      - "8000:3000"                   # Host 8000 → Container 3000
     environment:                      # Environment variables
       - NODE_ENV=development
-      - PORT=3000
+      - PORT=3000                     # Container port 3000
     volumes:                  
       # ============================================
       # Volume mounting for hot-reload (development)
