@@ -14,6 +14,7 @@ export const useSocket = (roomId: string, userName: string, shouldJoin: boolean 
     const [participants, setParticipants] = useState<Participant[]>([]);
     const [isConnected, setIsConnected] = useState(false);
     const hasJoined = useRef(false);
+    const mySocketId = useRef<string | null>(null);
 
     useEffect(() => {
         if (!roomId || !userName || !shouldJoin) return;
@@ -30,6 +31,7 @@ export const useSocket = (roomId: string, userName: string, shouldJoin: boolean 
 
         newSocket.on('connect', () => {
             console.log('Socket connected:', newSocket.id);
+            mySocketId.current = newSocket.id || null;
             setIsConnected(true);
 
             if (!hasJoined.current) {
@@ -46,19 +48,37 @@ export const useSocket = (roomId: string, userName: string, shouldJoin: boolean 
         newSocket.on('disconnect', (reason) => {
             console.log('Socket disconnected:', reason);
             setIsConnected(false);
+            setParticipants([]);
+            mySocketId.current = null;
         });
 
-        newSocket.on('existing-participants', (existingParticipants: Participant[]) => {
-            console.log('Existing participants:', existingParticipants);
-            // Filter out self
-            const filtered = existingParticipants.filter(p => p.userId !== newSocket.id);
+        newSocket.on('room-metadata', (data: { participants: Participant[], activeCount: number }) => {
+            const currentId = mySocketId.current;
+            if (!currentId) {
+                console.log('Socket ID not set yet, skipping room-metadata');
+                return;
+            }
+            console.log('Room metadata received:', data);
+            console.log('All participants:', data.participants);
+            console.log('My socket ID:', currentId);
+            
+            const filtered = data.participants.filter(p => p.userId !== currentId);
+            console.log('Filtered participants (after removing self):', filtered);
             setParticipants(filtered);
         });
 
         newSocket.on('user-joined', (user: Participant) => {
+            const currentId = mySocketId.current;
+            if (!currentId) {
+                console.log('Socket ID not set yet, skipping user-joined');
+                return;
+            }
+            console.log('user-joined event - user:', user.userId, 'currentId:', currentId);
+            if (user.userId === currentId) {
+                console.log('Ignoring self in user-joined');
+                return;
+            }
             console.log('User joined:', user);
-            // Don't add self
-            if (user.userId === newSocket.id) return;
 
             setParticipants((prev) => {
                 if (prev.some((p) => p.userId === user.userId)) return prev;
@@ -72,11 +92,14 @@ export const useSocket = (roomId: string, userName: string, shouldJoin: boolean 
         });
 
         return () => {
-            if (newSocket && newSocket.connected) {
-                newSocket.emit('leave-room', { roomId });
+            if (newSocket) {
+                if (newSocket.connected) {
+                    newSocket.emit('leave-room', { roomId });
+                }
                 newSocket.disconnect();
             }
             hasJoined.current = false;
+            mySocketId.current = null;
         };
     }, [roomId, userName, shouldJoin]);
 

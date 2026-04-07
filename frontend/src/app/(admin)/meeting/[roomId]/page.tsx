@@ -4,391 +4,353 @@ import { useState, useEffect, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useMeeting } from '@/hooks/use-meeting';
 import { useSocket } from '@/hooks/use-socket';
-import { useWebRTC } from '@/hooks/use-webrtc';
+import { useMediasoup } from '@/hooks/use-mediasoup';
+import { useScreenShare } from '@/hooks/use-screen-share';
 import { VideoGrid } from '@/components/meeting/video-grid';
 import { MeetingControls } from '@/components/meeting/meeting-controls';
-import { Calendar, Clock, Copy, Check, Users } from 'lucide-react';
+import {
+  Calendar,
+  Clock,
+  Copy,
+  Check,
+  Users,
+  X,
+  Info,
+  MessageSquare,
+  ShieldAlert,
+} from 'lucide-react';
 
 export default function MeetingRoomPage() {
-    const params = useParams();
-    const router = useRouter();
-    const roomId = params.roomId as string;
-    const { meeting, isLoading, error } = useMeeting(roomId);
+  const params = useParams();
+  const router = useRouter();
+  const roomId = params.roomId as string;
+  const { meeting, isLoading, error } = useMeeting(roomId);
 
-    const [userName, setUserName] = useState('');
-    const [hasJoined, setHasJoined] = useState(false);
-    const [isAudioEnabled, setIsAudioEnabled] = useState(true);
-    const [isVideoEnabled, setIsVideoEnabled] = useState(true);
-    const [copied, setCopied] = useState(false);
-    const [localStream, setLocalStream] = useState<MediaStream | null>(null);
-    const [showParticipants, setShowParticipants] = useState(false);
-    const [hasMounted, setHasMounted] = useState(false);
-    const [isMediaReady, setIsMediaReady] = useState(false);
+  const [userName, setUserName] = useState('');
+  const [hasJoined, setHasJoined] = useState(false);
+  const [isAudioEnabled, setIsAudioEnabled] = useState(true);
+  const [isVideoEnabled, setIsVideoEnabled] = useState(true);
+  const [copied, setCopied] = useState(false);
+  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+  const [activeSidebar, setActiveSidebar] = useState<
+    'participants' | 'chat' | null
+  >(null);
+  const [hasMounted, setHasMounted] = useState(false);
+  const [isMediaReady, setIsMediaReady] = useState(false);
 
-    // ✅ Socket connection - Delayed until media is ready
-    const { socket, participants: remoteParticipants, isConnected } = useSocket(roomId, userName, isMediaReady);
+  // ✅ Socket connection - Delayed until media is ready
+  const {
+    socket,
+    participants: remoteParticipants,
+    isConnected,
+  } = useSocket(roomId, userName, isMediaReady);
 
-    // ✅ WebRTC - এখন socket পাস করা যাচ্ছে
-    const {
-        remoteStreams,
-        createOffer,
-        updateParticipantName,
-        removeRemoteStream
-    } = useWebRTC(socket, roomId, localStream, userName);
+  // ✅ MediaSoup SFU
+  const {
+    remoteStreams,
+    produceScreenShare,
+    stopScreenShare: stopMediasoupScreenShare,
+    isMediasoupReady,
+  } = useMediasoup(socket, roomId, localStream, userName);
 
-    useEffect(() => {
-        setHasMounted(true);
+  // ✅ Screen Share Hook
+  const {
+    isSharing,
+    screenStream,
+    startScreenShare,
+    stopScreenShare: stopLocalScreenShare,
+  } = useScreenShare();
 
-        const savedName = localStorage.getItem('meeting_user_name');
-        if (savedName) {
-            setUserName(savedName);
-            setHasJoined(true);
-        } else {
-            const name = prompt('Enter your name to join the meeting:') || 'Guest';
-            setUserName(name);
-            localStorage.setItem('meeting_user_name', name);
-            setHasJoined(true);
-        }
-    }, []);
-
-    // Initialize media devices
-    useEffect(() => {
-        if (!hasJoined) return;
-
-        const initMedia = async () => {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    video: true,
-                    audio: true,
-                });
-                setLocalStream(stream);
-                setIsMediaReady(true);
-            } catch (err: any) {
-                console.warn('Could not get camera/mic:', err.name);
-
-                if (err.name === 'AbortError' || err.name === 'NotReadableError') {
-                    const mockStream = createMockVideoStream(userName);
-                    setLocalStream(mockStream);
-                    setIsMediaReady(true);
-                } else if (err.name === 'NotAllowedError') {
-                    try {
-                        const audioOnly = await navigator.mediaDevices.getUserMedia({
-                            video: false,
-                            audio: true,
-                        });
-                        setLocalStream(audioOnly);
-                        setIsVideoEnabled(false);
-                        setIsMediaReady(true);
-                    } catch {
-                        setLocalStream(createMockVideoStream(userName));
-                        setIsMediaReady(true);
-                    }
-                } else {
-                    setLocalStream(createMockVideoStream(userName));
-                    setIsMediaReady(true);
-                }
-            }
-        };
-
-        initMedia();
-
-        return () => {
-            if (localStream) {
-                localStream.getTracks().forEach(track => track.stop());
-            }
-        };
-    }, [hasJoined, userName]);
-
-    // ✅ When new participant joins, create offer
-    useEffect(() => {
-        if (!socket || !localStream) return;
-
-        const handleUserJoined = (user: { userId: string; name: string }) => {
-            console.log('New user joined, creating offer:', user);
-            updateParticipantName(user.userId, user.name);
-            setTimeout(() => {
-                createOffer(user.userId, user.name);
-            }, 500);
-        };
-
-        socket.on('user-joined', handleUserJoined);
-
-        return () => {
-            socket.off('user-joined', handleUserJoined);
-        };
-    }, [socket, localStream, createOffer, updateParticipantName]);
-
-    // ✅ When participant leaves, remove their stream
-    useEffect(() => {
-        if (!socket) return;
-
-        const handleUserLeft = (data: { userId: string }) => {
-            console.log('User left, removing stream:', data.userId);
-            removeRemoteStream(data.userId);
-        };
-
-        socket.on('user-left', handleUserLeft);
-
-        return () => {
-            socket.off('user-left', handleUserLeft);
-        };
-    }, [socket, removeRemoteStream]);
-
-    const createMockVideoStream = (name: string): MediaStream => {
-        const canvas = document.createElement('canvas');
-        canvas.width = 640;
-        canvas.height = 480;
-        const ctx = canvas.getContext('2d');
-
-        const draw = () => {
-            if (!ctx) return;
-            const hue = (Date.now() / 50) % 360;
-            ctx.fillStyle = `hsl(${hue}, 70%, 50%)`;
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            ctx.fillStyle = 'white';
-            ctx.font = 'bold 24px Arial';
-            ctx.textAlign = 'center';
-            ctx.fillText(name, canvas.width / 2, canvas.height / 2);
-            requestAnimationFrame(draw);
-        };
-        draw();
-        return canvas.captureStream(30);
-    };
-
-    const handleToggleAudio = () => {
-        if (localStream) {
-            const audioTrack = localStream.getAudioTracks()[0];
-            if (audioTrack) {
-                audioTrack.enabled = !isAudioEnabled;
-                setIsAudioEnabled(!isAudioEnabled);
-            }
-        }
-    };
-
-    const handleToggleVideo = () => {
-        if (localStream) {
-            const videoTrack = localStream.getVideoTracks()[0];
-            if (videoTrack) {
-                videoTrack.enabled = !isVideoEnabled;
-                setIsVideoEnabled(!isVideoEnabled);
-            }
-        }
-    };
-
-    const handleEndCall = () => {
-        if (localStream) {
-            localStream.getTracks().forEach(track => track.stop());
-        }
-        router.push('/meeting');
-    };
-
-    const handleCopyLink = async () => {
-        const link = `${window.location.origin}/meeting/${roomId}`;
-        await navigator.clipboard.writeText(link);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-    };
-
-    // Deduplicate remote participants
-    const uniqueRemoteParticipants = useMemo(() => {
-        const unique = new Map();
-        for (const p of remoteParticipants) {
-            if (!unique.has(p.userId)) {
-                unique.set(p.userId, p);
-            }
-        }
-        return Array.from(unique.values());
-    }, [remoteParticipants]);
-
-    // ✅ Sync participant names with WebRTC
-    useEffect(() => {
-        if (remoteParticipants.length > 0) {
-            remoteParticipants.forEach(p => {
-                updateParticipantName(p.userId, p.name);
-            });
-        }
-    }, [remoteParticipants, updateParticipantName]);
-
-    // Convert remote streams to VideoGrid format
-    const remoteVideoStreams = useMemo(() => {
-        return remoteStreams.map(rs => ({
-            id: rs.userId,
-            name: rs.name,
-            stream: rs.stream,
-            isVideoEnabled: true,
-            isAudioEnabled: true,
-        }));
-    }, [remoteStreams]);
-
-    if (!hasMounted || !hasJoined) {
-        return (
-            <div className="flex items-center justify-center h-screen bg-gray-950">
-                <div className="text-center">
-                    <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-                    <p className="text-gray-400">Joining meeting...</p>
-                </div>
-            </div>
-        );
+  useEffect(() => {
+    setHasMounted(true);
+    const savedName = localStorage.getItem('meeting_user_name');
+    if (savedName) {
+      setUserName(savedName);
+      setHasJoined(true);
+    } else {
+      const name = prompt('Enter your name to join the meeting:') || 'Guest';
+      setUserName(name);
+      localStorage.setItem('meeting_user_name', name);
+      setHasJoined(true);
     }
+  }, []);
 
-    if (isLoading) {
-        return (
-            <div className="flex items-center justify-center h-screen bg-gray-950">
-                <div className="text-center">
-                    <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-                    <p className="text-gray-400">Loading meeting...</p>
-                </div>
-            </div>
-        );
+  // Handle Screen Sharing Production
+  useEffect(() => {
+    if (screenStream && isMediasoupReady) {
+      produceScreenShare(screenStream);
     }
+  }, [screenStream, isMediasoupReady, produceScreenShare]);
 
-    if (error || !meeting) {
-        return (
-            <div className="flex items-center justify-center h-screen bg-gray-950">
-                <div className="text-center">
-                    <div className="text-6xl mb-4">🔴</div>
-                    <h1 className="text-2xl font-semibold text-white mb-2">Meeting Not Found</h1>
-                    <p className="text-gray-400 mb-6">The meeting you're looking for doesn't exist or has ended.</p>
-                    <button
-                        onClick={() => router.push('/meeting')}
-                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                    >
-                        Go to Meetings
-                    </button>
-                </div>
-            </div>
-        );
+  const handleToggleScreenShare = async () => {
+    if (isSharing) {
+      stopLocalScreenShare();
+      stopMediasoupScreenShare();
+      socket?.emit('producerClosed', { roomId, producerId: 'screen' });
+    } else {
+      const stream = await startScreenShare();
+      if (stream) {
+        // Production handled by useEffect above
+      }
     }
+  };
 
-    const totalParticipants = 1 + uniqueRemoteParticipants.length;
+  // Initialize media devices
+  useEffect(() => {
+    if (!hasJoined) return;
 
+    let active = true;
+    let newStream: MediaStream | null = null;
+
+    const initMedia = async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: true,
+        });
+        if (!active) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
+        newStream = stream;
+        setLocalStream(stream);
+        setIsMediaReady(true);
+      } catch (err: any) {
+        if (!active) return;
+        console.warn('Could not get camera/mic, using mock stream');
+        const mockStream = createMockVideoStream(userName);
+        newStream = mockStream;
+        setLocalStream(mockStream);
+        setIsMediaReady(true);
+      }
+    };
+
+    initMedia();
+
+    return () => {
+      active = false;
+      // Stop the tracks we just acquired in the effect (if any)
+      if (newStream) {
+        newStream.getTracks().forEach((track) => track.stop());
+      }
+      // Also stop existing localStream if needed, but newStream covers the race condition
+      if (localStream) {
+        localStream.getTracks().forEach((track) => track.stop());
+      }
+    };
+  }, [hasJoined, userName]);
+
+  const createMockVideoStream = (name: string): MediaStream => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 640;
+    canvas.height = 480;
+    const ctx = canvas.getContext('2d');
+    const draw = () => {
+      if (!ctx) return;
+      ctx.fillStyle = '#202124';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = 'white';
+      ctx.font = 'bold 30px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(name, canvas.width / 2, canvas.height / 2);
+      requestAnimationFrame(draw);
+    };
+    draw();
+    return canvas.captureStream(30);
+  };
+
+  const handleToggleAudio = () => {
+    if (localStream) {
+      localStream
+        .getAudioTracks()
+        .forEach((t) => (t.enabled = !isAudioEnabled));
+      setIsAudioEnabled(!isAudioEnabled);
+    }
+  };
+
+  const handleToggleVideo = () => {
+    if (localStream) {
+      localStream
+        .getVideoTracks()
+        .forEach((t) => (t.enabled = !isVideoEnabled));
+      setIsVideoEnabled(!isVideoEnabled);
+    }
+  };
+
+  const handleEndCall = () => {
+    if (localStream) {
+      localStream.getTracks().forEach((track) => track.stop());
+    }
+    router.push('/meeting');
+  };
+
+  const handleCopyLink = async () => {
+    const link = `${window.location.origin}/meeting/${roomId}`;
+    await navigator.clipboard.writeText(link);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  // Deduplicate remote participants
+  const uniqueRemoteParticipants = useMemo(() => {
+    const unique = new Map();
+    remoteParticipants.forEach((p) => unique.set(p.userId, p));
+    return Array.from(unique.values());
+  }, [remoteParticipants]);
+
+  const allVideoStreams = useMemo(() => {
+    return remoteStreams
+      .filter((s) => s.kind === 'video')
+      .map((rs) => ({
+        id: rs.id,
+        userId: rs.userId,
+        name: rs.name + (rs.type === 'screen' ? ' (Screen)' : ''),
+        stream: rs.stream,
+        isVideoEnabled: true,
+        isAudioEnabled: true,
+        type: rs.type,
+      }));
+  }, [remoteStreams]);
+
+  if (!hasMounted || !hasJoined || isLoading) {
     return (
-        <div className="h-screen bg-gray-950 flex flex-col">
-            {/* Meeting Header */}
-            <div className="flex items-center justify-between px-6 py-3 bg-gray-900 border-b border-gray-800">
-                <div>
-                    <h1 className="text-lg font-semibold text-white">{meeting.title || 'Meeting'}</h1>
-                    <div className="flex items-center gap-4 text-sm text-gray-400 mt-1">
-                        <div className="flex items-center gap-1">
-                            <Calendar className="w-3 h-3" />
-                            <span>
-                                {meeting.type === 'instant' ? 'Instant Meeting' :
-                                    (hasMounted && meeting.scheduledTime ? new Date(meeting.scheduledTime).toLocaleDateString() : 'Scheduled Meeting')}
-                            </span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                            <Clock className="w-3 h-3" />
-                            <span>Room ID: {meeting.roomId}</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                            <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} />
-                            <span>{isConnected ? 'Connected' : 'Disconnected'}</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="flex items-center gap-3">
-                    <button
-                        onClick={() => setShowParticipants(!showParticipants)}
-                        className="flex items-center gap-2 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm text-white transition relative"
-                    >
-                        <Users className="w-4 h-4" />
-                        Participants
-                        {uniqueRemoteParticipants.length > 0 && (
-                            <span className="ml-1 px-1.5 py-0.5 bg-blue-600 rounded-full text-xs">
-                                {uniqueRemoteParticipants.length}
-                            </span>
-                        )}
-                    </button>
-
-                    <button
-                        onClick={handleCopyLink}
-                        className="flex items-center gap-2 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm text-white transition"
-                    >
-                        {copied ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
-                        {copied ? 'Copied!' : 'Copy Link'}
-                    </button>
-                </div>
-            </div>
-
-            {/* Main Content */}
-            <div className="flex-1 flex p-4 gap-4 min-h-0">
-                <div className="flex-1">
-                    {isMediaReady ? (
-                        <VideoGrid
-                            streams={remoteVideoStreams}
-                            localStream={localStream}
-                            localName={userName}
-                        />
-                    ) : (
-                        <div className="flex items-center justify-center h-full">
-                            <div className="text-center">
-                                <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-                                <p className="text-gray-400">Initializing camera...</p>
-                            </div>
-                        </div>
-                    )}
-                </div>
-
-                {/* Participant List Sidebar */}
-                {showParticipants && (
-                    <div className="w-80 bg-gray-900 rounded-xl p-4 flex flex-col">
-                        <div className="flex items-center gap-2 mb-4 pb-2 border-b border-gray-700">
-                            <Users className="w-4 h-4 text-gray-400" />
-                            <h3 className="font-medium text-white">
-                                Participants ({totalParticipants})
-                            </h3>
-                        </div>
-                        <div className="flex-1 overflow-y-auto space-y-2">
-                            {/* Local user */}
-                            <div className="flex items-center gap-2 p-2 bg-gray-800 rounded-lg">
-                                <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-sm font-medium">
-                                    {userName.charAt(0).toUpperCase()}
-                                </div>
-                                <div className="flex-1">
-                                    <p className="text-sm text-white">
-                                        {userName} (You)
-                                        {meeting.hostName === userName && (
-                                            <span className="ml-2 text-xs bg-yellow-600 px-1.5 py-0.5 rounded">Host</span>
-                                        )}
-                                    </p>
-                                </div>
-                            </div>
-
-                            {/* Remote participants */}
-                            {uniqueRemoteParticipants.map((p) => (
-                                <div key={p.userId} className="flex items-center gap-2 p-2 bg-gray-800 rounded-lg">
-                                    <div className="w-8 h-8 rounded-full bg-purple-600 flex items-center justify-center text-white text-sm font-medium">
-                                        {p.name.charAt(0).toUpperCase()}
-                                    </div>
-                                    <div className="flex-1">
-                                        <p className="text-sm text-white">
-                                            {p.name}
-                                            {meeting.hostName === p.name && (
-                                                <span className="ml-2 text-xs bg-yellow-600 px-1.5 py-0.5 rounded">Host</span>
-                                            )}
-                                        </p>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                )}
-            </div>
-
-            {/* Meeting Controls */}
-            <div className="p-4">
-                <MeetingControls
-                    isAudioEnabled={isAudioEnabled}
-                    isVideoEnabled={isVideoEnabled}
-                    onToggleAudio={handleToggleAudio}
-                    onToggleVideo={handleToggleVideo}
-                    onEndCall={handleEndCall}
-                    onShareScreen={() => console.log('Share screen clicked')}
-                    onToggleParticipants={() => setShowParticipants(!showParticipants)}
-                    participantCount={totalParticipants}
-                />
-            </div>
+      <div className="flex items-center justify-center h-screen bg-[#202124]">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-white font-medium">Entering meeting room...</p>
         </div>
+      </div>
     );
+  }
+
+  const totalParticipants = 1 + uniqueRemoteParticipants.length;
+
+  return (
+    <div className="h-screen bg-[#202124] flex flex-col relative overflow-hidden">
+      {/* Header / Info (Floating Style on the side) */}
+      <div className="absolute top-6 left-6 z-40 hidden md:block group">
+        <div className="flex items-center gap-3 bg-black/40 backdrop-blur-md px-4 py-2 rounded-full border border-white/5 opacity-0 group-hover:opacity-100 transition-opacity">
+          <span className="text-white font-medium text-sm">
+            {meeting?.title || roomId}
+          </span>
+          <div className="w-[1px] h-3 bg-white/20" />
+          <span className="text-gray-300 text-xs">
+            {new Date().toLocaleTimeString([], {
+              hour: '2-digit',
+              minute: '2-digit',
+            })}
+          </span>
+        </div>
+      </div>
+
+      {/* Main Video Section */}
+      <div className="flex-1 flex min-h-0 relative">
+        <div
+          className={`flex-1 flex flex-col transition-all duration-500 ${activeSidebar ? 'mr-80 md:mr-96' : ''}`}
+        >
+          <div className="flex-1 flex items-center justify-center">
+            {isMediaReady ? (
+              <VideoGrid
+                streams={allVideoStreams}
+                localStream={localStream}
+                localName={userName}
+                localVideoEnabled={isVideoEnabled}
+                localAudioEnabled={isAudioEnabled}
+              />
+            ) : (
+              <div className="flex items-center justify-center">
+                <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Sidebar - Participant List */}
+        {activeSidebar && (
+          <div className="absolute right-0 top-0 bottom-0 w-80 md:w-96 bg-[#202124] shadow-2xl border-l border-white/10 z-50 flex flex-col m-4 rounded-2xl">
+            <div className="flex items-center justify-between p-6 border-b border-white/5">
+              <h3 className="text-xl font-medium text-white">
+                {activeSidebar === 'participants' ? 'People' : 'Messages'}
+              </h3>
+              <button
+                onClick={() => setActiveSidebar(null)}
+                className="p-2 hover:bg-white/5 rounded-full text-gray-400 transition-colors"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {activeSidebar === 'participants' ? (
+                <>
+                  {/* Local user */}
+                  <div className="flex items-center justify-between group">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-medium">
+                        {userName.charAt(0).toUpperCase()}
+                      </div>
+                      <span className="text-gray-200">{userName} (You)</span>
+                    </div>
+                  </div>
+
+                  {/* Remote participants */}
+                  {uniqueRemoteParticipants.map((p, idx) => (
+                    <div
+                      key={`${p.userId}-${idx}`}
+                      className="flex items-center justify-between group"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-purple-600 flex items-center justify-center text-white font-medium">
+                          {p.name.charAt(0).toUpperCase()}
+                        </div>
+                        <span className="text-gray-200">{p.name}</span>
+                      </div>
+                    </div>
+                  ))}
+                </>
+              ) : (
+                <div className="h-full flex items-center justify-center text-gray-500 italic">
+                  Chat is coming soon...
+                </div>
+              )}
+            </div>
+
+            {/* Sidebar Footer */}
+            {activeSidebar === 'participants' && (
+              <div className="p-4 bg-white/5 rounded-xl m-4">
+                <button
+                  onClick={handleCopyLink}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-all"
+                >
+                  {copied ? (
+                    <Check className="w-4 h-4" />
+                  ) : (
+                    <Copy className="w-4 h-4" />
+                  )}
+                  {copied ? 'Link Copied' : 'Add People'}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Meeting Controls */}
+      <MeetingControls
+        isAudioEnabled={isAudioEnabled}
+        isVideoEnabled={isVideoEnabled}
+        isSharing={isSharing}
+        onToggleAudio={handleToggleAudio}
+        onToggleVideo={handleToggleVideo}
+        onEndCall={handleEndCall}
+        onShareScreen={handleToggleScreenShare}
+        onToggleParticipants={() =>
+          setActiveSidebar(
+            activeSidebar === 'participants' ? null : 'participants'
+          )
+        }
+        participantCount={totalParticipants}
+      />
+    </div>
+  );
 }

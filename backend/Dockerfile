@@ -1,9 +1,16 @@
 # ============================================
 # Stage 1: Build Stage (For compiling TypeScript to JavaScript)
 # ============================================
-FROM node:20-alpine AS builder
+FROM node:20 AS builder
 
 WORKDIR /app
+
+# Install build dependencies for MediaSoup
+RUN apt-get update && apt-get install -y \
+    python3 \
+    make \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy package files first (for better caching)
 COPY package*.json ./
@@ -22,9 +29,16 @@ RUN npm run build
 # ============================================
 # Stage 2: Development Stage (For hot-reload development)
 # ============================================
-FROM node:20-alpine AS development
+FROM node:20 AS development
 
 WORKDIR /app
+
+# Install build dependencies for MediaSoup (needed if npm install runs here)
+RUN apt-get update && apt-get install -y \
+    python3 \
+    make \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy dependencies from builder
 COPY --from=builder /app/node_modules ./node_modules
@@ -44,7 +58,7 @@ CMD ["npm", "run", "start:dev"]
 # ============================================
 # Stage 3: Production Stage (For production deployment)
 # ============================================
-FROM node:20-alpine AS production
+FROM node:20 AS production
 
 WORKDIR /app
 

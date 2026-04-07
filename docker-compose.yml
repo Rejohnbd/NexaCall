@@ -12,6 +12,8 @@ services:
     restart: unless-stopped           # Auto restart policy 
     ports:                            # Port mapping (host:container)
       - "8000:3000"                   # Host 8000 → Container 3000
+      - "40000-40100:40000-40100/udp" # MediaSoup RTC UDP
+      - "40000-40100:40000-40100/tcp" # MediaSoup RTC TCP
     environment:                      # Environment variables
       - NODE_ENV=development
       - PORT=3000                     # Container port 3000
