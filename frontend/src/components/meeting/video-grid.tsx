@@ -1,7 +1,7 @@
 // frontend/src/components/meeting/video-grid.tsx
 'use client';
 
-import { useRef, useEffect, useMemo, useState } from 'react';
+import { useRef, useEffect, useMemo, useState, useCallback } from 'react';
 import { useFullscreen } from '@/hooks/use-fullscreen';
 import { Maximize2, Minimize2, MicOff, User } from 'lucide-react';
 
@@ -34,13 +34,71 @@ export const VideoGrid = ({
   const remoteVideoRefs = useRef<Map<string, HTMLVideoElement>>(new Map());
   const { isFullscreen, toggleFullscreen } = useFullscreen();
   const containerRef = useRef<HTMLDivElement>(null);
+  const [isLocalVideoReady, setIsLocalVideoReady] = useState(false);
 
-  // Initialize local video
+  // ✅ Safe local video setup with error handling
   useEffect(() => {
-    if (localVideoRef.current && localStream) {
-      localVideoRef.current.srcObject = localStream;
-    }
+    const videoElement = localVideoRef.current;
+    if (!videoElement || !localStream) return;
+
+    const setupVideo = async () => {
+      try {
+        // Pause any ongoing playback
+        videoElement.pause();
+        videoElement.srcObject = null;
+
+        // Set new stream
+        videoElement.srcObject = localStream;
+
+        // Wait for metadata to load
+        await new Promise((resolve) => {
+          videoElement.onloadedmetadata = resolve;
+        });
+
+        // Play with error handling
+        await videoElement.play();
+        setIsLocalVideoReady(true);
+      } catch (err) {
+        console.warn('Local video play error:', err);
+        setIsLocalVideoReady(false);
+      }
+    };
+
+    setupVideo();
+
+    return () => {
+      if (videoElement) {
+        videoElement.pause();
+        videoElement.srcObject = null;
+      }
+    };
   }, [localStream]);
+
+  // ✅ Safe remote video setup
+  const setupRemoteVideo = useCallback((videoElement: HTMLVideoElement, stream: MediaStream) => {
+    if (!videoElement || !stream) return;
+
+    const playVideo = async () => {
+      try {
+        // Don't reassign if already has same stream
+        if (videoElement.srcObject === stream) return;
+
+        videoElement.pause();
+        videoElement.srcObject = null;
+        videoElement.srcObject = stream;
+
+        await new Promise((resolve) => {
+          videoElement.onloadedmetadata = resolve;
+        });
+
+        await videoElement.play();
+      } catch (err) {
+        console.warn(`Remote video play error for stream:`, err);
+      }
+    };
+
+    playVideo();
+  }, []);
 
   // Aggregate all streams
   const allStreams = useMemo(() => {
@@ -76,13 +134,12 @@ export const VideoGrid = ({
     allStreams.forEach((stream) => {
       if (stream.id !== 'local' && stream.stream) {
         const videoEl = remoteVideoRefs.current.get(stream.id);
-        if (videoEl && videoEl.srcObject !== stream.stream) {
-          videoEl.srcObject = stream.stream;
-          videoEl.play().catch((e) => console.warn('Play error:', e));
+        if (videoEl) {
+          setupRemoteVideo(videoEl, stream.stream);
         }
       }
     });
-  }, [allStreams]);
+  }, [allStreams, setupRemoteVideo]);
 
   const participantCount = allStreams.length;
   const hasScreenShare = allStreams.some((s) => s.type === 'screen');
@@ -101,6 +158,77 @@ export const VideoGrid = ({
     return 'grid-cols-2 lg:grid-cols-3 xl:grid-cols-4';
   };
 
+  // Render local video or placeholder
+  const renderLocalVideo = () => {
+    if (localStream && localVideoEnabled) {
+      return (
+        <>
+          <video
+            ref={localVideoRef}
+            autoPlay
+            playsInline
+            muted
+            className={`w-full h-full object-cover ${isLocalVideoReady ? 'block' : 'hidden'}`}
+          />
+          {!isLocalVideoReady && (
+            <div className="w-full h-full flex items-center justify-center bg-[#202124]">
+              <div className="w-20 h-20 rounded-full bg-blue-600 flex items-center justify-center shadow-2xl">
+                <span className="text-3xl font-bold text-white uppercase">
+                  {localName?.charAt(0) || 'U'}
+                </span>
+              </div>
+            </div>
+          )}
+        </>
+      );
+    }
+
+    // Placeholder when video is off
+    return (
+      <div className="w-full h-full flex items-center justify-center bg-[#202124]">
+        <div className="w-20 h-20 rounded-full bg-blue-600 flex items-center justify-center shadow-2xl">
+          <span className="text-3xl font-bold text-white uppercase">
+            {localName?.charAt(0) || 'U'}
+          </span>
+        </div>
+      </div>
+    );
+  };
+
+  // Render remote video or placeholder
+  const renderRemoteVideo = (stream: VideoStream) => {
+    if (stream.stream && stream.isVideoEnabled) {
+      return (
+        <video
+          ref={(el) => {
+            if (el) {
+              remoteVideoRefs.current.set(stream.id, el);
+              if (stream.stream && el.srcObject !== stream.stream) {
+                setupRemoteVideo(el, stream.stream);
+              }
+            } else {
+              remoteVideoRefs.current.delete(stream.id);
+            }
+          }}
+          autoPlay
+          playsInline
+          className="w-full h-full object-cover"
+        />
+      );
+    }
+
+    // Placeholder when video is off
+    return (
+      <div className="w-full h-full flex items-center justify-center bg-[#202124]">
+        <div className="w-20 h-20 rounded-full bg-purple-600 flex items-center justify-center shadow-2xl">
+          <span className="text-3xl font-bold text-white uppercase">
+            {stream.name?.charAt(0) || 'U'}
+          </span>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div
       ref={containerRef}
@@ -109,44 +237,13 @@ export const VideoGrid = ({
       {allStreams.map((stream) => (
         <div
           key={stream.id}
-          className={`relative bg-[#3c4043] rounded-xl overflow-hidden aspect-video group shadow-lg ring-1 ring-white/10 ${
-            stream.type === 'screen'
+          className={`relative bg-[#3c4043] rounded-xl overflow-hidden aspect-video group shadow-lg ring-1 ring-white/10 ${stream.type === 'screen'
               ? 'lg:col-span-3 lg:row-span-2'
               : 'col-span-1'
-          }`}
+            }`}
         >
           {/* Video Element */}
-          {stream.isVideoEnabled ? (
-            <video
-              ref={(el) => {
-                if (stream.id === 'local') {
-                  (localVideoRef as any).current = el;
-                } else if (el) {
-                  remoteVideoRefs.current.set(stream.id, el);
-                } else {
-                  remoteVideoRefs.current.delete(stream.id);
-                }
-
-                if (el && stream.stream && el.srcObject !== stream.stream) {
-                  el.srcObject = stream.stream;
-                  el.play().catch((e) => console.warn('Play error:', e));
-                }
-              }}
-              autoPlay
-              playsInline
-              muted={stream.id === 'local'}
-              className={`w-full h-full object-cover ${stream.id === 'local' ? '' : ''}`}
-            />
-          ) : (
-            /* Avatar/Placeholder when video is off */
-            <div className="w-full h-full flex items-center justify-center bg-[#202124]">
-              <div className="w-20 h-20 rounded-full bg-blue-600 flex items-center justify-center shadow-2xl">
-                <span className="text-3xl font-bold text-white uppercase">
-                  {stream.name?.charAt(0) || 'U'}
-                </span>
-              </div>
-            </div>
-          )}
+          {stream.id === 'local' ? renderLocalVideo() : renderRemoteVideo(stream)}
 
           {/* Bottom Info Bar */}
           <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between pointer-events-none">
@@ -172,11 +269,11 @@ export const VideoGrid = ({
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                const vid =
+                const videoElement =
                   stream.id === 'local'
                     ? localVideoRef.current
                     : remoteVideoRefs.current.get(stream.id);
-                if (vid) toggleFullscreen(vid);
+                if (videoElement) toggleFullscreen(videoElement);
               }}
               className="p-2 bg-black/60 hover:bg-black/80 rounded-full text-white pointer-events-auto backdrop-blur-sm"
             >
