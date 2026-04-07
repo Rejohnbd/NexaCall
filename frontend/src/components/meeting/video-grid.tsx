@@ -135,7 +135,7 @@ export const VideoGrid = ({
               autoPlay
               playsInline
               muted={stream.id === 'local'}
-              className={`w-full h-full object-cover ${stream.id === 'local' ? 'mirror' : ''}`}
+              className={`w-full h-full object-cover ${stream.id === 'local' ? '' : ''}`}
             />
           ) : (
             /* Avatar/Placeholder when video is off */

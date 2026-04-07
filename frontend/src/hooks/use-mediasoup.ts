@@ -30,7 +30,9 @@ export const useMediasoup = (
 
     // Common function to consume a producer
     const consumeProducer = useCallback(async (data: { producerId: string; userId: string; kind: 'audio' | 'video'; appData: any }) => {
-        if (!socket || !recvTransportRef.current || !deviceRef.current) {
+        if (!socket || data.userId === socket.id) return;
+
+        if (!recvTransportRef.current || !deviceRef.current) {
             console.log('Transport not ready yet, buffering producer:', data.producerId);
             if (!pendingProducers.current.some(p => p.producerId === data.producerId)) {
                 pendingProducers.current.push(data);
@@ -192,8 +194,12 @@ export const useMediasoup = (
     useEffect(() => {
         if (!socket) return;
 
-        const handleNewProducer = (data: any) => consumeProducer(data);
-        const handleExistingProducers = (producers: any[]) => producers.forEach(p => consumeProducer(p));
+        const handleNewProducer = (data: any) => {
+            if (data.userId !== socket.id) consumeProducer(data);
+        };
+        const handleExistingProducers = (producers: any[]) => producers.forEach(p => {
+            if (p.userId !== socket.id) consumeProducer(p);
+        });
         const handleUserLeft = ({ userId }: { userId: string }) => {
             setRemoteStreams(prev => prev.filter(s => s.userId !== userId));
         };
@@ -204,7 +210,7 @@ export const useMediasoup = (
                 return filtered;
             });
             data.producers.forEach(p => {
-                if (!consumersRef.current.has(p.producerId)) consumeProducer(p);
+                if (p.userId !== socket.id && !consumersRef.current.has(p.producerId)) consumeProducer(p);
             });
         };
 

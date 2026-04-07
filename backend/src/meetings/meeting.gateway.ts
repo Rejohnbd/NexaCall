@@ -8,19 +8,6 @@ import {
 import { Server, Socket } from 'socket.io';
 import { MediasoupService } from './mediasoup.service';
 
-interface Participant {
-  id: string;
-  name: string;
-  roomId: string;
-}
-
-interface ProducerInfo {
-  producerId: string;
-  userId: string;
-  kind: 'audio' | 'video';
-  appData?: any;
-}
-
 @WebSocketGateway({
   cors: {
     origin: '*',
@@ -28,17 +15,15 @@ interface ProducerInfo {
   },
   namespace: 'meeting',
 })
-export class MeetingGateway
-  implements OnGatewayConnection, OnGatewayDisconnect
-{
+export class MeetingGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
-  server!: Server;
+  server: Server;
 
   private rooms = new Map<string, Set<string>>();
-  private participants = new Map<string, Participant>();
-  private roomProducers = new Map<string, ProducerInfo[]>();
+  private participants = new Map<string, { id: string; name: string; roomId: string }>();
+  private roomProducers = new Map<string, Array<{ producerId: string; userId: string; kind: string; appData: any }>>();
 
-  constructor(private readonly mediasoupService: MediasoupService) {}
+  constructor(private readonly mediasoupService: MediasoupService) { }
 
   handleConnection(client: Socket) {
     console.log(`Client connected: ${client.id}`);
@@ -48,12 +33,8 @@ export class MeetingGateway
     const participant = this.participants.get(client.id);
     if (participant) {
       const roomId = participant.roomId;
-      const room = this.rooms.get(roomId);
-      if (room) {
-        room.delete(client.id);
-        if (room.size === 0) {
-          this.rooms.delete(roomId);
-        }
+      if (this.rooms.has(roomId)) {
+        this.rooms.get(roomId)?.delete(client.id);
       }
       this.participants.delete(client.id);
 
@@ -64,9 +45,7 @@ export class MeetingGateway
       // Remove user's producers from roomProducers
       const producers = this.roomProducers.get(roomId);
       if (producers) {
-        const updatedProducers = producers.filter(
-          (p) => p.userId !== client.id,
-        );
+        const updatedProducers = producers.filter(p => p.userId !== client.id);
         this.roomProducers.set(roomId, updatedProducers);
       }
 
@@ -84,39 +63,33 @@ export class MeetingGateway
     const roomUsers = this.rooms.get(roomId);
     if (!roomUsers) return;
 
-    const participantsList: Participant[] = [];
-    roomUsers.forEach((userId) => {
+    const participants: any[] = [];
+    roomUsers.forEach(userId => {
       const p = this.participants.get(userId);
-      if (p) participantsList.push(p);
+      if (p) participants.push(p);
     });
 
     const producers = this.roomProducers.get(roomId) || [];
 
     this.server.to(roomId).emit('room-metadata', {
       roomId,
-      participants: participantsList,
+      participants,
       producers,
-      activeCount: participantsList.length,
+      activeCount: participants.length
     });
   }
 
   @SubscribeMessage('join-room')
-  async handleJoinRoom(
-    client: Socket,
-    payload: { roomId: string; name: string },
-  ) {
+  async handleJoinRoom(client: Socket, payload: { roomId: string; name: string }) {
     const { roomId, name } = payload;
 
     // Leave previous room if exists
     const existingParticipant = this.participants.get(client.id);
     if (existingParticipant) {
       client.leave(existingParticipant.roomId);
-      const oldRoom = this.rooms.get(existingParticipant.roomId);
-      if (oldRoom) {
-        oldRoom.delete(client.id);
-        client
-          .to(existingParticipant.roomId)
-          .emit('user-left', { userId: client.id });
+      if (this.rooms.has(existingParticipant.roomId)) {
+        this.rooms.get(existingParticipant.roomId)?.delete(client.id);
+        client.to(existingParticipant.roomId).emit('user-left', { userId: client.id });
       }
     }
 
@@ -136,14 +109,18 @@ export class MeetingGateway
     // Initialize MediaSoup Router for the room
     await this.mediasoupService.getOrCreateRouter(roomId);
 
-    console.log(
-      `${name} (${client.id}) joined room: ${roomId}, total: ${this.rooms.get(roomId)?.size}`,
-    );
+    // Notify others about new user
+    client.to(roomId).emit('user-joined', {
+      userId: client.id,
+      name: name,
+    });
+
+    console.log(`${name} (${client.id}) joined room: ${roomId}, total: ${this.rooms.get(roomId)?.size}`);
 
     // Send existing producers to the newly joined client
     const existingProducers = this.roomProducers.get(roomId) || [];
     if (existingProducers.length > 0) {
-      client.emit('existing-producers', existingProducers);
+      client.emit('existingProducers', existingProducers);
     }
 
     // Broadcast updated metadata to everyone
@@ -155,98 +132,67 @@ export class MeetingGateway
   @SubscribeMessage('getRouterRtpCapabilities')
   async handleGetRtpCapabilities(client: Socket, payload: { roomId: string }) {
     try {
-      const rtpCapabilities = await this.mediasoupService.getRtpCapabilities(
-        payload.roomId,
-      );
-      return { rtpCapabilities };
+      const rtpCapabilities = await this.mediasoupService.getRtpCapabilities(payload.roomId);
+      return rtpCapabilities;
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : 'Unknown error';
-      return { error: errorMessage };
+      return { error: error.message };
     }
   }
 
   @SubscribeMessage('createTransport')
   async handleCreateTransport(client: Socket, payload: { roomId: string }) {
     try {
-      const transportData = await this.mediasoupService.createWebRtcTransport(
-        payload.roomId,
-      );
+      const transportData = await this.mediasoupService.createWebRtcTransport(payload.roomId);
       return transportData;
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : 'Unknown error';
-      return { error: errorMessage };
+      return { error: error.message };
     }
   }
 
   @SubscribeMessage('connectTransport')
-  async handleConnectTransport(
-    client: Socket,
-    payload: { transportId: string; dtlsParameters: any },
-  ) {
+  async handleConnectTransport(client: Socket, payload: { transportId: string; dtlsParameters: any }) {
     try {
-      await this.mediasoupService.connectTransport(
-        payload.transportId,
-        payload.dtlsParameters,
-      );
+      await this.mediasoupService.connectTransport(payload.transportId, payload.dtlsParameters);
       return { success: true };
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : 'Unknown error';
-      return { error: errorMessage };
+      return { error: error.message };
     }
   }
 
   @SubscribeMessage('produce')
-  async handleProduce(
-    client: Socket,
-    payload: {
-      transportId: string;
-      kind: 'audio' | 'video';
-      rtpParameters: any;
-      roomId: string;
-      appData?: any;
-    },
-  ) {
+  async handleProduce(client: Socket, payload: { transportId: string; kind: any; rtpParameters: any; roomId: string; appData?: any }) {
     try {
-      const producer = await this.mediasoupService.produce(
-        payload.transportId,
-        payload.kind,
-        payload.rtpParameters,
-      );
-
-      const producerInfo: ProducerInfo = {
-        producerId: producer.id,
-        userId: client.id,
-        kind: payload.kind,
-        appData: payload.appData,
-      };
+      const producer = await this.mediasoupService.produce(payload.transportId, payload.kind, payload.rtpParameters);
 
       // Store producer info for new joiners
       if (!this.roomProducers.has(payload.roomId)) {
         this.roomProducers.set(payload.roomId, []);
       }
-      this.roomProducers.get(payload.roomId)?.push(producerInfo);
+      this.roomProducers.get(payload.roomId)?.push({
+        producerId: producer.id,
+        userId: client.id,
+        kind: payload.kind,
+        appData: payload.appData,
+      });
 
-      // Notify others in the room about the new producer
-      client.to(payload.roomId).emit('new-producer', producerInfo);
+      // Notify others in the room about the new producer (legacy)
+      client.to(payload.roomId).emit('newProducer', {
+        producerId: producer.id,
+        userId: client.id,
+        kind: payload.kind,
+        appData: payload.appData,
+      });
 
       this.broadcastRoomMetadata(payload.roomId);
 
       return { id: producer.id };
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : 'Unknown error';
-      return { error: errorMessage };
+      return { error: error.message };
     }
   }
 
   @SubscribeMessage('consume')
-  async handleConsume(
-    client: Socket,
-    payload: { transportId: string; producerId: string; rtpCapabilities: any },
-  ) {
+  async handleConsume(client: Socket, payload: { transportId: string; producerId: string; rtpCapabilities: any }) {
     try {
       const participant = this.participants.get(client.id);
       if (!participant) throw new Error('Participant not found');
@@ -265,34 +211,24 @@ export class MeetingGateway
         rtpParameters: consumer.rtpParameters,
       };
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : 'Unknown error';
-      return { error: errorMessage };
+      return { error: error.message };
     }
   }
 
-  @SubscribeMessage('producer-closed')
-  handleProducerClosed(
-    client: Socket,
-    payload: { roomId: string; producerId: string },
-  ) {
+  @SubscribeMessage('producerClosed')
+  handleProducerClosed(client: Socket, payload: { roomId: string; producerId: string }) {
     const producers = this.roomProducers.get(payload.roomId);
     if (producers) {
-      const updated = producers.filter(
-        (p) => p.producerId !== payload.producerId,
-      );
+      const updated = producers.filter(p => p.producerId !== payload.producerId);
       this.roomProducers.set(payload.roomId, updated);
       this.broadcastRoomMetadata(payload.roomId);
     }
   }
 
-  // --- Legacy Mesh Signaling (kept for backward compatibility) ---
+  // --- Legacy Mesh Signaling (to be removed later) ---
 
   @SubscribeMessage('offer')
-  handleOffer(
-    client: Socket,
-    payload: { to: string; offer: any; roomId: string },
-  ) {
+  handleOffer(client: Socket, payload: { to: string; offer: any; roomId: string }) {
     client.to(payload.to).emit('offer', {
       from: client.id,
       offer: payload.offer,
@@ -300,10 +236,7 @@ export class MeetingGateway
   }
 
   @SubscribeMessage('answer')
-  handleAnswer(
-    client: Socket,
-    payload: { to: string; answer: any; roomId: string },
-  ) {
+  handleAnswer(client: Socket, payload: { to: string; answer: any; roomId: string }) {
     client.to(payload.to).emit('answer', {
       from: client.id,
       answer: payload.answer,
@@ -311,10 +244,7 @@ export class MeetingGateway
   }
 
   @SubscribeMessage('ice-candidate')
-  handleIceCandidate(
-    client: Socket,
-    payload: { to: string; candidate: any; roomId: string },
-  ) {
+  handleIceCandidate(client: Socket, payload: { to: string; candidate: any; roomId: string }) {
     client.to(payload.to).emit('ice-candidate', {
       from: client.id,
       candidate: payload.candidate,
