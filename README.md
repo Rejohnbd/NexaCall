@@ -4,20 +4,19 @@
 
 ## Tech Stack
 
-| Technology | Purpose |
-| :--- | :--- |
-| **NestJS** | Backend API & WebSocket Server |
+| Technology     | Purpose                            |
+| :------------- | :--------------------------------- |
+| **NestJS**     | Backend API & WebSocket Server     |
 | **PostgreSQL** | Database for meetings & recordings |
-| **pgAdmin** | Web-based Database Management |
-| **Docker** | Containerization & Deployment |
-| **TypeORM** | ORM for Database operations |
+| **pgAdmin**    | Web-based Database Management      |
+| **Docker**     | Containerization & Deployment      |
+| **TypeORM**    | ORM for Database operations        |
 
-<!-- 
-| **WebRTC** | Real-time video communication | 
+<!--
+| **WebRTC** | Real-time video communication |
 -->
 
 ---
-
 
 ## Docker Commands - Complete Reference
 
@@ -230,6 +229,7 @@ docker logs nexacall-pgadmin
 ```
 
 **pgAdmin Web Interface:**
+
 - URL: [http://localhost:5050](http://localhost:5050)
 - Email: `admin@nexacall.com`
 - Password: `admin123`
@@ -299,4 +299,3 @@ nest g interceptor <interceptor-name>
 # Interceptor Shortcut
 nest g itc <interceptor-name>
 ```
-

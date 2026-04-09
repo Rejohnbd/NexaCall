@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  allowedDevOrigins: ["103.113.13.2", "localhost"],
   /* config options here */
   webpack: (config: any, { dev, isServer }: { dev: boolean; isServer: boolean }) => {
     if (dev && !isServer) {

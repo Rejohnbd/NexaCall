@@ -7,3 +7,7 @@ frontend/.next
 frontend/out
 frontend/dist
 frontend/build
+
+mkcert.exe
+nginx/ssl/cert.pem
+nginx/ssl/privkey.pem
