@@ -1,5 +1,11 @@
 #!/bin/bash
 
+# Start PulseAudio as a virtual sound server
+echo "Starting PulseAudio..."
+rm -rf /var/run/pulse /var/lib/pulse /root/.config/pulse
+pulseaudio -D --exit-idle-time=-1 --system=false
+pacmd load-module module-virtual-sink sink_name=v1
+
 # Start Xvfb (Virtual Frame Buffer) in the background
 # This provides a virtual display for Chromium to run in a headless environment
 echo "Starting Xvfb on display :99..."

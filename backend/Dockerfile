@@ -41,6 +41,7 @@ RUN apt-get update && apt-get install -y \
     chromium \
     ffmpeg \
     xvfb \
+    pulseaudio \
     fonts-liberation \
     libasound2 \
     libatk-bridge2.0-0 \
@@ -107,6 +108,7 @@ RUN apt-get update && apt-get install -y \
     chromium \
     ffmpeg \
     xvfb \
+    pulseaudio \
     fonts-liberation \
     libasound2 \
     libatk-bridge2.0-0 \

@@ -80,8 +80,9 @@ export class RecordingService {
                 '-video_size', '1920x1080',
                 '-framerate', '30',
                 '-i', display,
-                '-f', 'lavfi',
-                '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100',
+                '-f', 'pulse',
+                '-ac', '2',
+                '-i', 'default',
                 '-c:v', 'libx264',
                 '-preset', 'ultrafast',
                 '-pix_fmt', 'yuv420p',
@@ -97,11 +98,16 @@ export class RecordingService {
 
             ffmpeg.stderr.on('data', (data) => {
                 const message = data.toString().trim();
-                // We log everything for debugging, but prefix errors specifically
+                // Check if message is just normal progress output (contains frame=)
+                if (message.startsWith('frame=') || message.includes('bitrate=')) {
+                    return; // Ignore spammy progress logs
+                }
+                
                 if (message.toLowerCase().includes('error') || message.toLowerCase().includes('failed')) {
                     this.logger.error(`FFmpeg Error: ${message}`);
                 } else {
-                    this.logger.verbose(`FFmpeg Status: ${message}`);
+                    // Only log non-spammy informational messages
+                    this.logger.verbose(`FFmpeg Info: ${message}`);
                 }
             });
 
