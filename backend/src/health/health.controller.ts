@@ -1,6 +1,10 @@
 import { Controller, Get } from '@nestjs/common';
 import { InjectConnection } from '@nestjs/typeorm';
 import { Connection } from 'typeorm';
+import * as os from 'os';
+import * as fs from 'fs';
+import * as path from 'path';
+import { HealthLogger } from './health-logger.service';
 
 @Controller('health')
 export class HealthController {
@@ -28,17 +32,34 @@ export class HealthController {
             databaseError = error.message;
         }
 
+        let packageJson: any = {};
+        try {
+            const pkgPath = path.join(process.cwd(), 'package.json');
+            packageJson = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+        } catch (e) {}
+
+        const freeMem = os.freemem();
+        const totalMem = os.totalmem();
+
         return {
             app: 'running',
+            version: packageJson.version || 'unknown',
+            environment: process.env.NODE_ENV || 'development',
+            system: {
+                uptimeSeconds: os.uptime(),
+                totalMemoryMB: Math.round(totalMem / 1024 / 1024),
+                freeMemoryMB: Math.round(freeMem / 1024 / 1024),
+                cpuLoad: os.loadavg(),
+            },
+            process: {
+                uptimeSeconds: process.uptime(),
+                memoryUsageMB: Math.round(process.memoryUsage().rss / 1024 / 1024),
+            },
             database: {
                 status: databaseStatus,
                 error: databaseError,
-                // config: {
-                //     host: process.env.DB_HOST,
-                //     port: process.env.DB_PORT,
-                //     database: process.env.DB_NAME,
-                // },
             },
+            logs: HealthLogger.getRecentLogs(),
             timestamp: new Date().toISOString(),
         };
     }
