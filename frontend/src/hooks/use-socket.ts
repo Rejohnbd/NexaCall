@@ -1,10 +1,26 @@
 import { useEffect, useState, useRef } from 'react';
 import io, { Socket } from 'socket.io-client';
 
-const SOCKET_URL = process.env.NEXT_PUBLIC_WS_URL || 'http://localhost:8000';
+// Dynamic URL detection to work across different IPs/devices
+const getSocketUrl = () => {
+  if (typeof window !== 'undefined') {
+    const { protocol, hostname, port } = window.location;
+    // In production/SSL environment, we use the same host via Nginx
+    if (protocol === 'https:' || hostname !== 'localhost') {
+       const wsProtocol = protocol === 'https:' ? 'wss:' : 'ws:';
+       return process.env.NEXT_PUBLIC_WS_URL || `${wsProtocol}//${hostname}`;
+    }
+    // Fallback for local development without Nginx
+    return process.env.NEXT_PUBLIC_WS_URL || `http://localhost:8000`;
+  }
+  return process.env.NEXT_PUBLIC_WS_URL || 'http://localhost:8000';
+};
+
+const SOCKET_URL = getSocketUrl();
 
 interface Participant {
-    userId: string;
+    id: string;      // From server
+    userId?: string; // For frontend compatibility
     name: string;
     roomId: string;
 }
@@ -53,36 +69,49 @@ export const useSocket = (roomId: string, userName: string, shouldJoin: boolean 
         });
 
         newSocket.on('room-metadata', (data: { participants: Participant[], activeCount: number }) => {
-            const currentId = mySocketId.current;
+            const currentId = newSocket.id;
             if (!currentId) {
-                console.log('Socket ID not set yet, skipping room-metadata');
+                console.warn('[use-socket] Room metadata received but socket.id is missing');
                 return;
             }
-            console.log('Room metadata received:', data);
-            console.log('All participants:', data.participants);
-            console.log('My socket ID:', currentId);
             
-            const filtered = data.participants.filter(p => p.userId !== currentId);
-            console.log('Filtered participants (after removing self):', filtered);
+            mySocketId.current = currentId;
+
+            // Map server side 'id' to 'userId' for consistency
+            const normalizedParticipants = data.participants.map(p => ({
+                ...p,
+                userId: p.id || p.userId // Ensure we have a userId
+            }));
+
+            const filtered = normalizedParticipants.filter(p => {
+                if (!p || !p.userId) return false;
+                
+                // Normalize IDs by removing socket.io namespace prefixes (e.g., /meeting#)
+                const stripNamespace = (id: string) => (id && id.includes('#')) ? id.split('#').pop() : id;
+                const pId = stripNamespace(p.userId);
+                const sId = stripNamespace(currentId);
+                
+                const isSelf = pId === sId;
+                return !isSelf;
+            });
+            
+            console.log('[use-socket] Filtered participants:', filtered.map(p => p.name));
             setParticipants(filtered);
         });
 
         newSocket.on('user-joined', (user: Participant) => {
             const currentId = mySocketId.current;
-            if (!currentId) {
-                console.log('Socket ID not set yet, skipping user-joined');
-                return;
-            }
-            console.log('user-joined event - user:', user.userId, 'currentId:', currentId);
-            if (user.userId === currentId) {
-                console.log('Ignoring self in user-joined');
-                return;
-            }
-            console.log('User joined:', user);
+            if (!currentId) return;
+
+            // Normalize
+            const userId = user.id || user.userId;
+            
+            if (userId === currentId) return;
 
             setParticipants((prev) => {
-                if (prev.some((p) => p.userId === user.userId)) return prev;
-                return [...prev, user];
+                const existing = prev.find(p => p.id === user.id || p.userId === userId);
+                if (existing) return prev;
+                return [...prev, { ...user, userId }];
             });
         });
 

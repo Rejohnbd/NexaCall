@@ -43,23 +43,21 @@ export const VideoGrid = ({
 
     const setupVideo = async () => {
       try {
-        // Pause any ongoing playback
         videoElement.pause();
         videoElement.srcObject = null;
-
-        // Set new stream
         videoElement.srcObject = localStream;
-
-        // Wait for metadata to load
-        await new Promise((resolve) => {
-          videoElement.onloadedmetadata = resolve;
-        });
-
-        // Play with error handling
-        await videoElement.play();
         setIsLocalVideoReady(true);
+      const playPromise = videoElement.play();
+      if (playPromise !== undefined) {
+        playPromise.catch((e) => {
+          if (e.name !== 'AbortError') {
+            const isLocal = stream.id === 'local';
+            console.warn(`${isLocal ? 'Local' : 'Remote'} video play error:`, e.name, e.message);
+          }
+        });
+      }
       } catch (err) {
-        console.warn('Local video play error:', err);
+        console.warn('Local video setup error:', err);
         setIsLocalVideoReady(false);
       }
     };
@@ -75,30 +73,28 @@ export const VideoGrid = ({
   }, [localStream]);
 
   // ✅ Safe remote video setup
-  const setupRemoteVideo = useCallback((videoElement: HTMLVideoElement, stream: MediaStream) => {
-    if (!videoElement || !stream) return;
+  const setupRemoteVideo = useCallback(
+    (videoElement: HTMLVideoElement, stream: MediaStream) => {
+      if (!videoElement || !stream) return;
 
-    const playVideo = async () => {
-      try {
-        // Don't reassign if already has same stream
-        if (videoElement.srcObject === stream) return;
+      const tryPlay = () => {
+        void videoElement.play().catch(() => {});
+      };
 
+      if (videoElement.srcObject !== stream) {
         videoElement.pause();
         videoElement.srcObject = null;
         videoElement.srcObject = stream;
-
-        await new Promise((resolve) => {
-          videoElement.onloadedmetadata = resolve;
-        });
-
-        await videoElement.play();
-      } catch (err) {
-        console.warn(`Remote video play error for stream:`, err);
       }
-    };
 
-    playVideo();
-  }, []);
+      tryPlay();
+      stream.getVideoTracks().forEach((t) => {
+        t.addEventListener('unmute', tryPlay, { once: true });
+      });
+      videoElement.addEventListener('loadedmetadata', tryPlay, { once: true });
+    },
+    []
+  );
 
   // Aggregate all streams
   const allStreams = useMemo(() => {
@@ -168,7 +164,7 @@ export const VideoGrid = ({
             autoPlay
             playsInline
             muted
-            className={`w-full h-full object-cover ${isLocalVideoReady ? 'block' : 'hidden'}`}
+            className={`w-full h-full object-cover ${isLocalVideoReady ? 'block' : 'hidden'} mirror`}
           />
           {!isLocalVideoReady && (
             <div className="w-full h-full flex items-center justify-center bg-[#202124]">
@@ -213,6 +209,8 @@ export const VideoGrid = ({
           autoPlay
           playsInline
           className="w-full h-full object-cover"
+          title={`${stream.name} video`}
+          aria-label={`${stream.name} video`}
         />
       );
     }
@@ -237,18 +235,21 @@ export const VideoGrid = ({
       {allStreams.map((stream) => (
         <div
           key={stream.id}
-          className={`relative bg-[#3c4043] rounded-xl overflow-hidden aspect-video group shadow-lg ring-1 ring-white/10 ${stream.type === 'screen'
+          className={`relative bg-[#3c4043] rounded-xl overflow-hidden aspect-video group shadow-lg ring-1 ring-white/10 ${
+            stream.type === 'screen'
               ? 'lg:col-span-3 lg:row-span-2'
               : 'col-span-1'
-            }`}
+          }`}
         >
           {/* Video Element */}
-          {stream.id === 'local' ? renderLocalVideo() : renderRemoteVideo(stream)}
+          {stream.id === 'local'
+            ? renderLocalVideo()
+            : renderRemoteVideo(stream)}
 
           {/* Bottom Info Bar */}
           <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between pointer-events-none">
             <div className="flex items-center gap-2 bg-black/50 backdrop-blur-md px-3 py-1 rounded-full text-white text-sm">
-              <span className="truncate max-w-[120px] font-medium">
+              <span className="truncate max-w-30 font-medium">
                 {stream.name} {stream.id === 'local' && '(You)'}
               </span>
               {!stream.isAudioEnabled && (

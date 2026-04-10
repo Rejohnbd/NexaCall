@@ -299,3 +299,9 @@ nest g interceptor <interceptor-name>
 # Interceptor Shortcut
 nest g itc <interceptor-name>
 ```
+sudo ufw allow 40000:40100/udp
+sudo ufw allow 40000:40100/tcp
+
+New-NetFirewallRule -DisplayName "MediaSoup RTC UDP" -Direction Inbound -Action Allow -Protocol UDP -LocalPort 40000-40100
+New-NetFirewallRule -DisplayName "MediaSoup RTC TCP" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 40000-40100
+

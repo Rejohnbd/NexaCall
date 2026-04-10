@@ -51,6 +51,7 @@ export default function MeetingRoomPage() {
     produceScreenShare,
     stopScreenShare: stopMediasoupScreenShare,
     isMediasoupReady,
+    mediasoupDebug,
   } = useMediasoup(socket, roomId, localStream, userName);
 
   // ✅ Screen Share Hook
@@ -191,26 +192,71 @@ export default function MeetingRoomPage() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // Deduplicate remote participants
-  const uniqueRemoteParticipants = useMemo(() => {
-    const unique = new Map();
-    remoteParticipants.forEach((p) => unique.set(p.userId, p));
-    return Array.from(unique.values());
-  }, [remoteParticipants]);
+  // Deduplicate remote participants and map their streams
+  const participantsWithStreams = useMemo(() => {
+    // 1. Get all unique remote participants from useSocket
+    const streamsList: Array<{ id: string; userId: string; name: string; stream: MediaStream; isVideoEnabled: boolean; isAudioEnabled: boolean; type: 'camera' | 'screen' }> = [];
+    const processedUserIds = new Set<string>();
 
-  const allVideoStreams = useMemo(() => {
-    return remoteStreams
-      .filter((s) => s.kind === 'video')
-      .map((rs) => ({
-        id: rs.id,
-        userId: rs.userId,
-        name: rs.name + (rs.type === 'screen' ? ' (Screen)' : ''),
-        stream: rs.stream,
-        isVideoEnabled: true,
-        isAudioEnabled: true,
-        type: rs.type,
-      }));
-  }, [remoteStreams]);
+    const localId = socket?.id;
+
+    remoteParticipants.forEach(p => {
+      // Find camera video and any audio streams for this participant
+      const userVideo = remoteStreams.find(s => s.userId === p.userId && s.kind === 'video' && s.type === 'camera');
+      const userAudio = remoteStreams.find(s => s.userId === p.userId && s.kind === 'audio');
+
+      const compositeStream = new MediaStream();
+      let isVideoEnabled = false;
+      let isAudioEnabled = false;
+
+      if (userVideo) {
+        userVideo.stream.getVideoTracks().forEach(t => compositeStream.addTrack(t));
+        isVideoEnabled = true;
+      }
+
+      if (userAudio) {
+        userAudio.stream.getAudioTracks().forEach(t => compositeStream.addTrack(t));
+        isAudioEnabled = true;
+      }
+
+      const pId = p.userId || p.id || `temp-${Math.random()}`;
+
+      streamsList.push({
+        id: `user-${pId}`,
+        userId: pId,
+        name: p.name || 'Unknown',
+        stream: compositeStream,
+        isVideoEnabled,
+        isAudioEnabled,
+        type: 'camera',
+      });
+      processedUserIds.add(p.userId as string);
+    });
+
+    // 2. Add screen shares as SEPARATE tiles
+    remoteStreams
+      .filter(s => s.type === 'screen' && s.kind === 'video')
+      .forEach(s => {
+        // Skip if it's our own screen (we see it via localStream logic in VideoGrid if needed, 
+        // though usually we just show a "You are presenting" placeholder)
+        if (s.userId === localId) return;
+
+        const stream = new MediaStream();
+        s.stream.getVideoTracks().forEach(t => stream.addTrack(t));
+
+        streamsList.push({
+          id: `screen-${s.id}`, // s.id is already unique (userId-producerId)
+          userId: s.userId,
+          name: `${s.name} (Screen)`,
+          stream,
+          isVideoEnabled: true,
+          isAudioEnabled: false,
+          type: 'screen'
+        });
+      });
+
+    return streamsList;
+  }, [remoteParticipants, remoteStreams, socket?.id]);
 
   if (!hasMounted || !hasJoined || isLoading) {
     return (
@@ -223,7 +269,7 @@ export default function MeetingRoomPage() {
     );
   }
 
-  const totalParticipants = 1 + uniqueRemoteParticipants.length;
+  const totalParticipants = 1 + remoteParticipants.length;
 
   return (
     <div className="h-screen bg-[#202124] flex flex-col relative overflow-hidden">
@@ -250,13 +296,48 @@ export default function MeetingRoomPage() {
         >
           <div className="flex-1 flex items-center justify-center">
             {isMediaReady ? (
-              <VideoGrid
-                streams={allVideoStreams}
-                localStream={localStream}
-                localName={userName}
-                localVideoEnabled={isVideoEnabled}
-                localAudioEnabled={isAudioEnabled}
-              />
+              <>
+                <VideoGrid
+                  streams={participantsWithStreams}
+                  localStream={localStream}
+                  localName={userName}
+                  localVideoEnabled={isVideoEnabled}
+                  localAudioEnabled={isAudioEnabled}
+                />
+                {/* <div className="absolute left-6 bottom-6 z-50 w-[320px] max-w-[90vw] bg-black/70 text-xs text-white rounded-2xl border border-white/10 p-3 backdrop-blur-md shadow-2xl">
+                  <div className="font-semibold text-sm text-slate-100 mb-2">
+                    Meeting debug
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="text-slate-300">Socket</div>
+                    <div className="text-white truncate">
+                      {socket?.id ?? 'waiting...'}
+                    </div>
+                    <div className="text-slate-300">Connected</div>
+                    <div className="text-white">
+                      {isConnected ? 'yes' : 'no'}
+                    </div>
+                    <div className="text-slate-300">Mediasoup ready</div>
+                    <div className="text-white">
+                      {isMediasoupReady ? 'yes' : 'no'}
+                    </div>
+                    <div className="text-slate-300">Remote streams</div>
+                    <div className="text-white">{remoteStreams.length}</div>
+                    <div className="text-slate-300">Local producers</div>
+                    <div className="text-white">
+                      {mediasoupDebug.localProducerIds.join(', ') || 'none'}
+                    </div>
+                    <div className="text-slate-300">Remote producers</div>
+                    <div className="text-white">
+                      {mediasoupDebug.remoteProducerIds.join(', ') || 'none'}
+                    </div>
+                    <div className="text-slate-300">Pending producers</div>
+                    <div className="text-white">
+                      {mediasoupDebug.pendingProducerCount}
+                    </div>
+                  </div>
+                </div> */}
+              </>
             ) : (
               <div className="flex items-center justify-center">
                 <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
@@ -294,7 +375,7 @@ export default function MeetingRoomPage() {
                   </div>
 
                   {/* Remote participants */}
-                  {uniqueRemoteParticipants.map((p, idx) => (
+                  {remoteParticipants.map((p, idx) => (
                     <div
                       key={`${p.userId}-${idx}`}
                       className="flex items-center justify-between group"

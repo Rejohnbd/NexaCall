@@ -26,6 +26,7 @@ services:
       - JWT_SECRET=nexacall-secret
       - JWT_REFRESH_SECRET=nexacall-refresh-secret
       - FRONTEND_URL=https://103.113.13.2
+      - MEDIASOUP_ANNOUNCED_IP=103.113.13.2
     volumes:
       # ============================================
       # Volume mounting for hot-reload (development)

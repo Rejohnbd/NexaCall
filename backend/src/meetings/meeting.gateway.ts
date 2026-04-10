@@ -127,6 +127,23 @@ export class MeetingGateway implements OnGatewayConnection, OnGatewayDisconnect 
     this.broadcastRoomMetadata(roomId);
   }
 
+  /**
+   * Pull-based sync for clients that missed `existingProducers` / `room-metadata`
+   * (e.g. those events can fire before React attaches mediasoup listeners).
+   */
+  @SubscribeMessage('getExistingProducers')
+  handleGetExistingProducers(
+    client: Socket,
+    payload: { roomId: string },
+  ): { producers: Array<{ producerId: string; userId: string; kind: string; appData: any }> } | { error: string } {
+    const participant = this.participants.get(client.id);
+    if (!participant || participant.roomId !== payload.roomId) {
+      return { error: 'Not in room' };
+    }
+    const producers = this.roomProducers.get(payload.roomId) || [];
+    return { producers };
+  }
+
   // --- MediaSoup SFU Signaling ---
 
   @SubscribeMessage('getRouterRtpCapabilities')
@@ -183,6 +200,8 @@ export class MeetingGateway implements OnGatewayConnection, OnGatewayDisconnect 
         appData: payload.appData,
       });
 
+      console.log(`[MeetingGateway] New producer created: producerId=${producer.id}, userId=${client.id}, kind=${payload.kind}, roomId=${payload.roomId}`);
+
       this.broadcastRoomMetadata(payload.roomId);
 
       return { id: producer.id };
@@ -222,6 +241,21 @@ export class MeetingGateway implements OnGatewayConnection, OnGatewayDisconnect 
       const updated = producers.filter(p => p.producerId !== payload.producerId);
       this.roomProducers.set(payload.roomId, updated);
       this.broadcastRoomMetadata(payload.roomId);
+    }
+  }
+
+  @SubscribeMessage('resumeConsumer')
+  async handleResumeConsumer(client: Socket, payload: { consumerId: string }) {
+    try {
+      const consumer = this.mediasoupService.getConsumer(payload.consumerId);
+      if (consumer) {
+        await consumer.resume();
+        console.log(`Consumer ${payload.consumerId} resumed`);
+        return { success: true };
+      }
+      return { error: 'Consumer not found' };
+    } catch (error) {
+      return { error: error.message };
     }
   }
 

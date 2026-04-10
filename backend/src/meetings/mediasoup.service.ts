@@ -47,7 +47,7 @@ export class MediasoupService implements OnModuleInit, OnModuleDestroy {
             listenIps: [
                 {
                     ip: '0.0.0.0',
-                    announcedIp: '127.0.0.1', // Change this to public IP for production
+                    announcedIp: process.env.MEDIASOUP_ANNOUNCED_IP || '127.0.0.1',
                 },
             ],
             enableUdp: true,
@@ -190,6 +190,10 @@ export class MediasoupService implements OnModuleInit, OnModuleDestroy {
     async getRtpCapabilities(roomId: string): Promise<mediasoup.types.RtpCapabilities> {
         const router = await this.getOrCreateRouter(roomId);
         return router.rtpCapabilities;
+    }
+
+    getConsumer(consumerId: string): mediasoup.types.Consumer | undefined {
+        return this.consumers.get(consumerId);
     }
 
     closeRoom(roomId: string) {
