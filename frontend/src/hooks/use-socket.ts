@@ -27,7 +27,7 @@ interface Participant {
     isVideoEnabled?: boolean;
 }
 
-export const useSocket = (roomId: string, userName: string, shouldJoin: boolean = true) => {
+export const useSocket = (roomId: string, userName: string, shouldJoin: boolean = true, isRecorder: boolean = false) => {
     const [socket, setSocket] = useState<Socket | null>(null);
     const [participants, setParticipants] = useState<Participant[]>([]);
     const [isConnected, setIsConnected] = useState(false);
@@ -54,7 +54,7 @@ export const useSocket = (roomId: string, userName: string, shouldJoin: boolean 
 
             if (!hasJoined.current) {
                 hasJoined.current = true;
-                newSocket.emit('join-room', { roomId, name: userName });
+                newSocket.emit('join-room', { roomId, name: userName, isRecorder });
             }
         });
 

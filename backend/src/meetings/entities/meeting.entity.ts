@@ -6,7 +6,7 @@ import {
     UpdateDateColumn,
 } from 'typeorm';
 
-@Entity('meetings')
+@Entity('all_meetings')
 export class Meeting {
     @PrimaryGeneratedColumn('uuid')
     id: string;
@@ -41,6 +41,21 @@ export class Meeting {
         allowScreenShare?: boolean;
         maxParticipants?: number;
     };
+
+    @Column({ nullable: true })
+    videoPath?: string;
+
+    @Column({ type: 'varchar', default: 'none' })
+    recordingStatus: 'none' | 'recording' | 'completed' | 'failed';
+
+    @Column({ type: 'timestamp', nullable: true })
+    recordingStartedAt?: Date;
+
+    @Column({ type: 'timestamp', nullable: true })
+    recordingEndedAt?: Date;
+
+    @Column({ type: 'integer', nullable: true })
+    duration?: number; // in seconds
 
     @CreateDateColumn()
     createdAt: Date;

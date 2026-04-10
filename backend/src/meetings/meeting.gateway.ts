@@ -7,6 +7,11 @@ import {
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { MediasoupService } from './mediasoup.service';
+import { RecordingService } from './recording.service';
+import { MeetingsService } from './meetings.service';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Meeting } from './entities/meeting.entity';
+import { Repository } from 'typeorm';
 
 @WebSocketGateway({
   cors: {
@@ -20,10 +25,16 @@ export class MeetingGateway implements OnGatewayConnection, OnGatewayDisconnect 
   server: Server;
 
   private rooms = new Map<string, Set<string>>();
-  private participants = new Map<string, { id: string; name: string; roomId: string; isAudioEnabled: boolean; isVideoEnabled: boolean }>();
+  private participants = new Map<string, { id: string; name: string; roomId: string; isAudioEnabled: boolean; isVideoEnabled: boolean; isRecorder?: boolean }>();
   private roomProducers = new Map<string, Array<{ producerId: string; userId: string; kind: string; appData: any }>>();
 
-  constructor(private readonly mediasoupService: MediasoupService) { }
+  constructor(
+    private readonly mediasoupService: MediasoupService,
+    private readonly recordingService: RecordingService,
+    private readonly meetingsService: MeetingsService,
+    @InjectRepository(Meeting)
+    private readonly meetingRepository: Repository<Meeting>,
+  ) { }
 
   handleConnection(client: Socket) {
     console.log(`Client connected: ${client.id}`);
@@ -49,8 +60,23 @@ export class MeetingGateway implements OnGatewayConnection, OnGatewayDisconnect 
         this.roomProducers.set(roomId, updatedProducers);
       }
 
-      // If room is empty, clear mediasoup router and roomProducers
-      if (this.rooms.get(roomId)?.size === 0) {
+      // If room is empty (ignoring recorder bots)
+      const roomUsers = this.rooms.get(roomId);
+      let humanCount = 0;
+      if (roomUsers) {
+        roomUsers.forEach(id => {
+          const p = this.participants.get(id);
+          if (p && !p.isRecorder) humanCount++;
+        });
+      }
+
+      if (humanCount === 0) {
+        this.recordingService.stopRecording(roomId).catch(err => 
+          console.error(`Failed to stop recording for ${roomId}:`, err)
+        );
+        this.meetingsService.setInactive(roomId).catch(err => 
+          console.error(`Failed to mark meeting ${roomId} as inactive:`, err)
+        );
         this.mediasoupService.closeRoom(roomId);
         this.roomProducers.delete(roomId);
       } else {
@@ -80,7 +106,7 @@ export class MeetingGateway implements OnGatewayConnection, OnGatewayDisconnect 
   }
 
   @SubscribeMessage('join-room')
-  async handleJoinRoom(client: Socket, payload: { roomId: string; name: string }) {
+  async handleJoinRoom(client: Socket, payload: { roomId: string; name: string; isRecorder?: boolean }) {
     const { roomId, name } = payload;
 
     // Leave previous room if exists
@@ -106,6 +132,7 @@ export class MeetingGateway implements OnGatewayConnection, OnGatewayDisconnect 
       roomId: roomId,
       isAudioEnabled: true,
       isVideoEnabled: true,
+      isRecorder: payload.isRecorder || false,
     });
 
     // Initialize MediaSoup Router for the room
@@ -127,6 +154,22 @@ export class MeetingGateway implements OnGatewayConnection, OnGatewayDisconnect 
 
     // Broadcast updated metadata to everyone
     this.broadcastRoomMetadata(roomId);
+
+    // Auto-start recording for the first HUMAN participant
+    const roomUsers = this.rooms.get(roomId);
+    let humanCount = 0;
+    if (roomUsers) {
+      roomUsers.forEach(id => {
+        const p = this.participants.get(id);
+        if (p && !p.isRecorder) humanCount++;
+      });
+    }
+
+    if (humanCount === 1 && !payload.isRecorder) {
+      this.recordingService.startRecording(roomId).catch(err => 
+        console.error(`Failed to start recording for ${roomId}:`, err)
+      );
+    }
   }
 
   /**

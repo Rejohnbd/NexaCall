@@ -33,19 +33,34 @@ export default function MeetingRoomPage() {
   const [isVideoEnabled, setIsVideoEnabled] = useState(true);
   const [copied, setCopied] = useState(false);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
-  const [isJoinDialogOpen, setIsJoinDialogOpen] = useState(false);
+  const [isJoinDialogOpen, setIsJoinDialogOpen] = useState(true);
   const [activeSidebar, setActiveSidebar] = useState<
     'participants' | 'chat' | null
   >(null);
   const [hasMounted, setHasMounted] = useState(false);
   const [isMediaReady, setIsMediaReady] = useState(false);
+  const [isRecorder, setIsRecorder] = useState(false);
+
+  // Sync recorder mode from URL
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const searchParams = new URLSearchParams(window.location.search);
+      if (searchParams.get('recorder') === 'true') {
+        setIsRecorder(true);
+        // Recorder bot auto-joins
+        setIsJoinDialogOpen(false);
+        setUserName('Recorder Bot');
+        setHasJoined(true);
+      }
+    }
+  }, []);
 
   // Socket connection - Delayed until media is ready
   const {
     socket,
     participants: remoteParticipants,
     isConnected,
-  } = useSocket(roomId, userName, isMediaReady);
+  } = useSocket(roomId, userName, isMediaReady, isRecorder);
 
   // MediaSoup SFU
   const {
@@ -437,28 +452,32 @@ export default function MeetingRoomPage() {
         )}
       </div>
 
-      {/* Meeting Controls */}
-      <MeetingControls
-        isAudioEnabled={isAudioEnabled}
-        isVideoEnabled={isVideoEnabled}
-        isSharing={isSharing}
-        onToggleAudio={handleToggleAudio}
-        onToggleVideo={handleToggleVideo}
-        onEndCall={handleEndCall}
-        onShareScreen={handleToggleScreenShare}
-        onToggleParticipants={() =>
-          setActiveSidebar(
-            activeSidebar === 'participants' ? null : 'participants'
-          )
-        }
-        participantCount={totalParticipants}
-      />
+      {/* Meeting Controls - Hidden in Recorder Mode */}
+      {!isRecorder && (
+        <MeetingControls
+          isAudioEnabled={isAudioEnabled}
+          isVideoEnabled={isVideoEnabled}
+          isSharing={isSharing}
+          onToggleAudio={handleToggleAudio}
+          onToggleVideo={handleToggleVideo}
+          onEndCall={handleEndCall}
+          onShareScreen={handleToggleScreenShare}
+          onToggleParticipants={() =>
+            setActiveSidebar(
+              activeSidebar === 'participants' ? null : 'participants'
+            )
+          }
+          participantCount={totalParticipants}
+        />
+      )}
 
-      {/* Join Notification/Dialog */}
-      <JoinMeetingDialog 
-        isOpen={isJoinDialogOpen} 
-        onJoin={handleJoin} 
-      />
+      {/* Join Notification/Dialog - Hidden in Recorder Mode */}
+      {!isRecorder && (
+        <JoinMeetingDialog
+          isOpen={isJoinDialogOpen}
+          onJoin={handleJoin}
+        />
+      )}
     </div>
   );
 }
