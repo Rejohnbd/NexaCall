@@ -1,4 +1,3 @@
-// frontend/src/hooks/use-mediasoup.ts
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { Device } from 'mediasoup-client';
 import { Socket } from 'socket.io-client';

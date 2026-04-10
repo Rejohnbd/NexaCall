@@ -38,14 +38,14 @@ export default function MeetingRoomPage() {
   const [hasMounted, setHasMounted] = useState(false);
   const [isMediaReady, setIsMediaReady] = useState(false);
 
-  // ✅ Socket connection - Delayed until media is ready
+  // Socket connection - Delayed until media is ready
   const {
     socket,
     participants: remoteParticipants,
     isConnected,
   } = useSocket(roomId, userName, isMediaReady);
 
-  // ✅ MediaSoup SFU
+  // MediaSoup SFU
   const {
     remoteStreams,
     produceScreenShare,
@@ -54,7 +54,7 @@ export default function MeetingRoomPage() {
     mediasoupDebug,
   } = useMediasoup(socket, roomId, localStream, userName);
 
-  // ✅ Screen Share Hook
+  // Screen Share Hook
   const {
     isSharing,
     screenStream,

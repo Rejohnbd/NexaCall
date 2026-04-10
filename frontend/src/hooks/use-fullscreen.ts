@@ -1,4 +1,3 @@
-// frontend/src/hooks/use-fullscreen.ts
 import { useCallback, useState, useEffect } from 'react';
 
 export const useFullscreen = () => {

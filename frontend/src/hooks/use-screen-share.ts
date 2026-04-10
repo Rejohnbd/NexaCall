@@ -1,4 +1,3 @@
-// frontend/src/hooks/use-screen-share.ts
 import { useState, useCallback } from 'react';
 
 export const useScreenShare = () => {

@@ -1,13 +1,12 @@
-// frontend/src/components/meeting/meeting-controls.tsx
 'use client';
 
-import { 
-    Mic, 
-    MicOff, 
-    Video as VideoIcon, 
-    VideoOff, 
-    PhoneOff, 
-    ScreenShare, 
+import {
+    Mic,
+    MicOff,
+    Video as VideoIcon,
+    VideoOff,
+    PhoneOff,
+    ScreenShare,
     StopCircle,
     Users,
     Settings,
@@ -55,11 +54,10 @@ export const MeetingControls = ({
                 <div className="flex items-center gap-3 bg-[#202124] p-3 rounded-2xl shadow-2xl ring-1 ring-white/10 mx-auto md:mx-0">
                     <button
                         onClick={onToggleAudio}
-                        className={`p-3 rounded-full transition-all duration-300 ${
-                            isAudioEnabled 
-                            ? 'bg-[#3c4043] hover:bg-[#4a4d51] text-white' 
-                            : 'bg-red-500 hover:bg-red-600 text-white shadow-lg ring-2 ring-red-500/50'
-                        }`}
+                        className={`p-3 rounded-full transition-all duration-300 ${isAudioEnabled
+                                ? 'bg-[#3c4043] hover:bg-[#4a4d51] text-white'
+                                : 'bg-red-500 hover:bg-red-600 text-white shadow-lg ring-2 ring-red-500/50'
+                            }`}
                         title={isAudioEnabled ? 'Mute' : 'Unmute'}
                     >
                         {isAudioEnabled ? <Mic className="w-6 h-6" /> : <MicOff className="w-6 h-6" />}
@@ -67,11 +65,10 @@ export const MeetingControls = ({
 
                     <button
                         onClick={onToggleVideo}
-                        className={`p-3 rounded-full transition-all duration-300 ${
-                            isVideoEnabled 
-                            ? 'bg-[#3c4043] hover:bg-[#4a4d51] text-white' 
-                            : 'bg-red-500 hover:bg-red-600 text-white shadow-lg ring-2 ring-red-500/50'
-                        }`}
+                        className={`p-3 rounded-full transition-all duration-300 ${isVideoEnabled
+                                ? 'bg-[#3c4043] hover:bg-[#4a4d51] text-white'
+                                : 'bg-red-500 hover:bg-red-600 text-white shadow-lg ring-2 ring-red-500/50'
+                            }`}
                         title={isVideoEnabled ? 'Stop Video' : 'Start Video'}
                     >
                         {isVideoEnabled ? <VideoIcon className="w-6 h-6" /> : <VideoOff className="w-6 h-6" />}
@@ -79,11 +76,10 @@ export const MeetingControls = ({
 
                     <button
                         onClick={onShareScreen}
-                        className={`p-3 rounded-full transition-all duration-300 ${
-                            isSharing 
-                            ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg ring-2 ring-blue-500/50 font-bold' 
-                            : 'bg-[#3c4043] hover:bg-[#4a4d51] text-white'
-                        }`}
+                        className={`p-3 rounded-full transition-all duration-300 ${isSharing
+                                ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg ring-2 ring-blue-500/50 font-bold'
+                                : 'bg-[#3c4043] hover:bg-[#4a4d51] text-white'
+                            }`}
                         title={isSharing ? 'Stop Presenting' : 'Present Now'}
                     >
                         {isSharing ? <StopCircle className="w-6 h-6" /> : <ScreenShare className="w-6 h-6" />}

@@ -1,4 +1,3 @@
-// frontend/src/hooks/use-webrtc.ts
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { Socket } from 'socket.io-client';
 

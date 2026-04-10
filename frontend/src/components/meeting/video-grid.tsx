@@ -1,4 +1,3 @@
-// frontend/src/components/meeting/video-grid.tsx
 'use client';
 
 import { useRef, useEffect, useMemo, useState, useCallback } from 'react';
@@ -36,7 +35,7 @@ export const VideoGrid = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const [isLocalVideoReady, setIsLocalVideoReady] = useState(false);
 
-  // ✅ Safe local video setup with error handling
+  // Safe local video setup with error handling
   useEffect(() => {
     const videoElement = localVideoRef.current;
     if (!videoElement || !localStream) return;
@@ -47,15 +46,14 @@ export const VideoGrid = ({
         videoElement.srcObject = null;
         videoElement.srcObject = localStream;
         setIsLocalVideoReady(true);
-      const playPromise = videoElement.play();
-      if (playPromise !== undefined) {
-        playPromise.catch((e) => {
-          if (e.name !== 'AbortError') {
-            const isLocal = stream.id === 'local';
-            console.warn(`${isLocal ? 'Local' : 'Remote'} video play error:`, e.name, e.message);
-          }
-        });
-      }
+        const playPromise = videoElement.play();
+        if (playPromise !== undefined) {
+          playPromise.catch((e) => {
+            if (e.name !== 'AbortError') {
+              console.warn(`Local video play error:`, e.name, e.message);
+            }
+          });
+        }
       } catch (err) {
         console.warn('Local video setup error:', err);
         setIsLocalVideoReady(false);
@@ -72,13 +70,13 @@ export const VideoGrid = ({
     };
   }, [localStream]);
 
-  // ✅ Safe remote video setup
+  // Safe remote video setup
   const setupRemoteVideo = useCallback(
     (videoElement: HTMLVideoElement, stream: MediaStream) => {
       if (!videoElement || !stream) return;
 
       const tryPlay = () => {
-        void videoElement.play().catch(() => {});
+        void videoElement.play().catch(() => { });
       };
 
       if (videoElement.srcObject !== stream) {
@@ -235,11 +233,10 @@ export const VideoGrid = ({
       {allStreams.map((stream) => (
         <div
           key={stream.id}
-          className={`relative bg-[#3c4043] rounded-xl overflow-hidden aspect-video group shadow-lg ring-1 ring-white/10 ${
-            stream.type === 'screen'
-              ? 'lg:col-span-3 lg:row-span-2'
-              : 'col-span-1'
-          }`}
+          className={`relative bg-[#3c4043] rounded-xl overflow-hidden aspect-video group shadow-lg ring-1 ring-white/10 ${stream.type === 'screen'
+            ? 'lg:col-span-3 lg:row-span-2'
+            : 'col-span-1'
+            }`}
         >
           {/* Video Element */}
           {stream.id === 'local'
