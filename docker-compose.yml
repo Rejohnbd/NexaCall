@@ -31,6 +31,9 @@ services:
       - CHROME_BIN=/usr/bin/chromium
     entrypoint: /app/entrypoint.sh
     command: npm run start:dev
+    depends_on:
+      postgres:
+        condition: service_healthy
     volumes:
       # ============================================
       # Volume mounting for hot-reload (development)
@@ -66,6 +69,9 @@ services:
     volumes:
       - ./frontend:/app
       - /app/node_modules
+    depends_on:
+      backend:
+        condition: service_started
     networks:
       - nexacall-network
 
@@ -83,8 +89,10 @@ services:
       - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
       - ./nginx/ssl:/etc/nginx/ssl:ro
     depends_on:
-      - frontend
-      - backend
+      frontend:
+        condition: service_started
+      backend:
+        condition: service_started
     networks:
       - nexacall-network
 
