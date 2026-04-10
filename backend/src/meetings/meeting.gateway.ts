@@ -20,7 +20,7 @@ export class MeetingGateway implements OnGatewayConnection, OnGatewayDisconnect 
   server: Server;
 
   private rooms = new Map<string, Set<string>>();
-  private participants = new Map<string, { id: string; name: string; roomId: string }>();
+  private participants = new Map<string, { id: string; name: string; roomId: string; isAudioEnabled: boolean; isVideoEnabled: boolean }>();
   private roomProducers = new Map<string, Array<{ producerId: string; userId: string; kind: string; appData: any }>>();
 
   constructor(private readonly mediasoupService: MediasoupService) { }
@@ -104,6 +104,8 @@ export class MeetingGateway implements OnGatewayConnection, OnGatewayDisconnect 
       id: client.id,
       name: name,
       roomId: roomId,
+      isAudioEnabled: true,
+      isVideoEnabled: true,
     });
 
     // Initialize MediaSoup Router for the room
@@ -283,5 +285,18 @@ export class MeetingGateway implements OnGatewayConnection, OnGatewayDisconnect 
       from: client.id,
       candidate: payload.candidate,
     });
+  }
+
+  @SubscribeMessage('toggle-media')
+  handleToggleMedia(client: Socket, payload: { audio?: boolean; video?: boolean }) {
+    const participant = this.participants.get(client.id);
+    if (participant) {
+      if (payload.audio !== undefined) participant.isAudioEnabled = payload.audio;
+      if (payload.video !== undefined) participant.isVideoEnabled = payload.video;
+      
+      console.log(`[MeetingGateway] Media toggled for ${participant.name}: audio=${participant.isAudioEnabled}, video=${participant.isVideoEnabled}`);
+      
+      this.broadcastRoomMetadata(participant.roomId);
+    }
   }
 }

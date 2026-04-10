@@ -23,6 +23,8 @@ interface Participant {
     userId?: string; // For frontend compatibility
     name: string;
     roomId: string;
+    isAudioEnabled?: boolean;
+    isVideoEnabled?: boolean;
 }
 
 export const useSocket = (roomId: string, userName: string, shouldJoin: boolean = true) => {

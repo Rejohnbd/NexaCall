@@ -179,19 +179,23 @@ export default function MeetingRoomPage() {
 
   const handleToggleAudio = () => {
     if (localStream) {
+      const newStatus = !isAudioEnabled;
       localStream
         .getAudioTracks()
-        .forEach((t) => (t.enabled = !isAudioEnabled));
-      setIsAudioEnabled(!isAudioEnabled);
+        .forEach((t) => (t.enabled = newStatus));
+      setIsAudioEnabled(newStatus);
+      socket?.emit('toggle-media', { audio: newStatus });
     }
   };
 
   const handleToggleVideo = () => {
     if (localStream) {
+      const newStatus = !isVideoEnabled;
       localStream
         .getVideoTracks()
-        .forEach((t) => (t.enabled = !isVideoEnabled));
-      setIsVideoEnabled(!isVideoEnabled);
+        .forEach((t) => (t.enabled = newStatus));
+      setIsVideoEnabled(newStatus);
+      socket?.emit('toggle-media', { video: newStatus });
     }
   };
 
@@ -223,17 +227,17 @@ export default function MeetingRoomPage() {
       const userAudio = remoteStreams.find(s => s.userId === p.userId && s.kind === 'audio');
 
       const compositeStream = new MediaStream();
-      let isVideoEnabled = false;
-      let isAudioEnabled = false;
+      
+      // Use the SIGNALLING status from the participant list, which is the ground truth
+      const isVideoEnabled = p.isVideoEnabled !== undefined ? p.isVideoEnabled : !!userVideo;
+      const isAudioEnabled = p.isAudioEnabled !== undefined ? p.isAudioEnabled : !!userAudio;
 
       if (userVideo) {
         userVideo.stream.getVideoTracks().forEach(t => compositeStream.addTrack(t));
-        isVideoEnabled = true;
       }
 
       if (userAudio) {
         userAudio.stream.getAudioTracks().forEach(t => compositeStream.addTrack(t));
-        isAudioEnabled = true;
       }
 
       const pId = p.userId || p.id || `temp-${Math.random()}`;
