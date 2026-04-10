@@ -95,6 +95,7 @@ export default function MeetingRoomPage() {
       if (savedName) {
         setUserName(savedName);
         setHasJoined(true);
+        setIsJoinDialogOpen(false);
       } else {
         setIsJoinDialogOpen(true);
       }
