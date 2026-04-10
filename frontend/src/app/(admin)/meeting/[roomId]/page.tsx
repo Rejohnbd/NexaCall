@@ -7,6 +7,7 @@ import { useSocket } from '@/hooks/use-socket';
 import { useMediasoup } from '@/hooks/use-mediasoup';
 import { useScreenShare } from '@/hooks/use-screen-share';
 import { VideoGrid } from '@/components/meeting/video-grid';
+import { JoinMeetingDialog } from '@/components/meeting/join-meeting-dialog';
 import { MeetingControls } from '@/components/meeting/meeting-controls';
 import {
   Calendar,
@@ -32,6 +33,7 @@ export default function MeetingRoomPage() {
   const [isVideoEnabled, setIsVideoEnabled] = useState(true);
   const [copied, setCopied] = useState(false);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+  const [isJoinDialogOpen, setIsJoinDialogOpen] = useState(false);
   const [activeSidebar, setActiveSidebar] = useState<
     'participants' | 'chat' | null
   >(null);
@@ -62,19 +64,34 @@ export default function MeetingRoomPage() {
     stopScreenShare: stopLocalScreenShare,
   } = useScreenShare();
 
+  // Redirect if room ID is invalid
+  useEffect(() => {
+    if (!isLoading && (error || !meeting)) {
+      console.error('[Meeting] Invalid room ID, redirecting...');
+      router.push('/meeting');
+    }
+  }, [isLoading, meeting, error, router]);
+
   useEffect(() => {
     setHasMounted(true);
-    const savedName = localStorage.getItem('meeting_user_name');
-    if (savedName) {
-      setUserName(savedName);
-      setHasJoined(true);
-    } else {
-      const name = prompt('Enter your name to join the meeting:') || 'Guest';
-      setUserName(name);
-      localStorage.setItem('meeting_user_name', name);
-      setHasJoined(true);
+    // Only ask for name if meeting exists and is loaded
+    if (!isLoading && meeting) {
+      const savedName = localStorage.getItem('meeting_user_name');
+      if (savedName) {
+        setUserName(savedName);
+        setHasJoined(true);
+      } else {
+        setIsJoinDialogOpen(true);
+      }
     }
-  }, []);
+  }, [isLoading, meeting]);
+
+  const handleJoin = (name: string) => {
+    setUserName(name);
+    localStorage.setItem('meeting_user_name', name);
+    setIsJoinDialogOpen(false);
+    setHasJoined(true);
+  };
 
   // Handle Screen Sharing Production
   useEffect(() => {
@@ -258,7 +275,7 @@ export default function MeetingRoomPage() {
     return streamsList;
   }, [remoteParticipants, remoteStreams, socket?.id]);
 
-  if (!hasMounted || !hasJoined || isLoading) {
+  if (!hasMounted || isLoading) {
     return (
       <div className="flex items-center justify-center h-screen bg-[#202124]">
         <div className="text-center">
@@ -431,6 +448,12 @@ export default function MeetingRoomPage() {
           )
         }
         participantCount={totalParticipants}
+      />
+
+      {/* Join Notification/Dialog */}
+      <JoinMeetingDialog 
+        isOpen={isJoinDialogOpen} 
+        onJoin={handleJoin} 
       />
     </div>
   );
