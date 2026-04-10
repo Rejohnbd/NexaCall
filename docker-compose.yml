@@ -34,6 +34,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    shm_size: '2gb' # Fixes Puppeteer/Chromium shared memory issues
     volumes:
       # ============================================
       # Volume mounting for hot-reload (development)
